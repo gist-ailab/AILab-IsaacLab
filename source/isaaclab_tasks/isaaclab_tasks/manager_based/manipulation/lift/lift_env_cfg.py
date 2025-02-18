@@ -171,6 +171,8 @@ class TerminationsCfg:
         func=mdp.root_height_below_minimum, params={"minimum_height": -0.05, "asset_cfg": SceneEntityCfg("object")}
     )
 
+    success = DoneTerm(func=mdp.object_reached_goal)
+
 
 @configclass
 class CurriculumCfg:
