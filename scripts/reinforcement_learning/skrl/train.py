@@ -22,8 +22,9 @@ parser = argparse.ArgumentParser(description="Train an RL agent with skrl.")
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
 parser.add_argument("--video_length", type=int, default=200, help="Length of the recorded video (in steps).")
 parser.add_argument("--video_interval", type=int, default=2000, help="Interval between video recordings (in steps).")
-parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
-parser.add_argument("--task", type=str, default=None, help="Name of the task.")
+parser.add_argument("--num_envs", type=int, default=16, help="Number of environments to simulate.")
+parser.add_argument("--task", type=str, default="Isaac-H1-Direct-v0", help="Name of the task.")
+# parser.add_argument("--task", type=str, default="Isaac-Humanoid-Direct-v0", help="Name of the task.")
 parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
 parser.add_argument(
     "--distributed", action="store_true", default=False, help="Run training with multiple GPUs or nodes."
@@ -64,6 +65,42 @@ simulation_app = app_launcher.app
 
 import gymnasium as gym
 import os
+# import sys
+# # Add source directory to Python path
+# source_path = '/home/bak/Projects/AILab-IsaacLab/source'
+# sys.path.append(source_path)
+# sys.path.append('/home/bak/Projects/AILab-IsaacLab/source/isaaclab_tasks/isaaclab_tasks/direct/humanoid')
+
+# # Debug prints
+# print("Python path:", sys.path)
+# print("Source directory contents:")
+# print(os.listdir(source_path))
+# print("isaaclab_tasks contents:")
+# print(os.listdir(os.path.join(source_path, "isaaclab_tasks")))
+
+# # Try importing the package
+# import isaaclab_tasks
+# print("Package location:", isaaclab_tasks.__file__)
+
+# # exit()
+
+# # Now you can import directly
+# from isaaclab_tasks.direct.humanoid import agents
+# # from isaaclab_tasks.direct.humanoid.h1_env import H1EnvCfg
+# # from humanoid.h1_env import H1EnvCfg
+# from isaaclab_tasks.direct.humanoid import H1Env, H1EnvCfg
+
+# gym.register(
+#     id="Isaac-H1-Direct-v0",
+#     entry_point="isaaclab_tasks.direct.humanoid:H1Env",
+#     disable_env_checker=True,
+#     kwargs={
+#         "env_cfg_entry_point": H1EnvCfg,
+#         "rl_games_cfg_entry_point": f"{agents.__name__}:rl_games_ppo_cfg.yaml",
+#         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:HumanoidPPORunnerCfg",
+#         "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_cfg.yaml",
+#     },
+# )
 import random
 from datetime import datetime
 
