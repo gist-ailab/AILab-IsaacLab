@@ -20,6 +20,7 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers.manager_base import ManagerTermBase
 from isaaclab.managers.manager_term_cfg import ObservationTermCfg
 from isaaclab.sensors import Camera, Imu, RayCaster, RayCasterCamera, TiledCamera
+from isaaclab.sensors.camera.utils import create_pointcloud_from_depth
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv, ManagerBasedRLEnv
@@ -278,6 +279,100 @@ def image(
             images[images == float("inf")] = 0
 
     return images.clone()
+
+
+def point_cloud(
+    env: ManagerBasedEnv,
+    sensor_cfg: SceneEntityCfg = SceneEntityCfg("camera"),
+    num_points: int = 512,
+) -> torch.Tensor:
+    """Creates point cloud from depth image using camera intrinsics and pose.
+
+    Args:
+        env: The environment.
+        sensor_cfg: The camera sensor configuration. Defaults to SceneEntityCfg("camera").
+
+    Returns:
+        Point cloud in world coordinates. Shape: (num_points, 3)
+    """
+    # Get camera sensor
+    sensor: Camera = env.scene.sensors[sensor_cfg.name]
+    
+    # Create point cloud
+    pointcloud = create_pointcloud_from_depth(
+        intrinsic_matrix=sensor.data.intrinsic_matrices[0],  # Using first camera
+        depth=sensor.data.output["depth"][0],
+        position=sensor.data.pos_w[0],
+        orientation=sensor.data.quat_w_ros[0],
+        device=env.device
+    )
+
+    # # Adaptive voxel downsampling
+    # pointcloud = adaptive_voxel_downsample(pointcloud, num_points)
+
+    # Uniform random sampling
+    if pointcloud.shape[0] > num_points:
+        # Random sampling if we have more points than needed
+        idx = torch.randperm(pointcloud.shape[0], device=env.device)[:num_points]
+        pointcloud = pointcloud[idx]
+    else:
+        # If we have fewer points, sample with replacement
+        idx = torch.randint(pointcloud.shape[0], (num_points,), device=env.device)
+        pointcloud = pointcloud[idx]
+
+    # shape: (num_points, 3)을 (1, num_points, 3)으로 확장. batch dimension 추가
+    return pointcloud.unsqueeze(0)
+
+
+# 격자기반 point cloud sampling
+def adaptive_voxel_downsample(points: torch.Tensor, target_points: int = 1024) -> torch.Tensor:
+    """Voxel downsampling with adaptive voxel size to achieve target number of points.
+    
+    Args:
+        points: Input point cloud (N, 3)
+        target_points: Desired number of points after downsampling
+        
+    Returns:
+        Downsampled point cloud with approximately target_points points
+    """
+    # Initialize voxel size based on point cloud bounds
+    bounds = torch.max(points, dim=0)[0] - torch.min(points, dim=0)[0]
+    voxel_size = torch.max(bounds) / (target_points ** (1/3))  # Initial estimate
+    
+    # Binary search for appropriate voxel size
+    max_iter = 10
+    min_size = 0
+    max_size = voxel_size * 2
+    
+    for _ in range(max_iter):
+        # Quantize points to voxel indices
+        voxels = torch.floor(points / voxel_size)
+        
+        # Get unique voxels
+        unique_voxels = torch.unique(voxels, dim=0)
+        num_voxels = len(unique_voxels)
+        
+        # Adjust voxel size based on number of points
+        if num_voxels > target_points * 1.1:  # Too many points
+            min_size = voxel_size
+            voxel_size = (voxel_size + max_size) / 2
+        elif num_voxels < target_points * 0.9:  # Too few points
+            max_size = voxel_size
+            voxel_size = (min_size + voxel_size) / 2
+        else:  # Close enough
+            break
+    
+    # Final downsampling with found voxel size
+    voxels = torch.floor(points / voxel_size)
+    _, inverse_indices = torch.unique(voxels, dim=0, return_inverse=True)
+    
+    # Calculate centroids for each voxel
+    downsampled = torch.zeros((len(torch.unique(inverse_indices)), 3), device=points.device)
+    for i in range(len(downsampled)):
+        mask = inverse_indices == i
+        downsampled[i] = points[mask].mean(dim=0)
+    
+    return downsampled
 
 
 class image_features(ManagerTermBase):

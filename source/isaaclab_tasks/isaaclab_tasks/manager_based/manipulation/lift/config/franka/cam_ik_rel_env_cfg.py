@@ -9,6 +9,7 @@ from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
 from isaaclab.envs.mdp.actions.actions_cfg import DifferentialInverseKinematicsActionCfg
 from isaaclab.utils import configclass
 from isaaclab.sensors import CameraCfg
+from isaaclab.sensors.camera.utils import create_pointcloud_from_depth
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 
@@ -22,8 +23,6 @@ from isaaclab_assets.robots.franka import FRANKA_PANDA_HIGH_PD_CFG  # isort: ski
 
 @configclass
 class FrankaCubeLiftEnvCfg(joint_pos_env_cfg.FrankaCubeLiftEnvCfg):
-
-    #### 아래에 있는 건 예제에 있는거임. 수정 필요함
     camera = CameraCfg(
         prim_path="{ENV_REGEX_NS}/Table/cam",
         update_period=0.1,
@@ -72,6 +71,24 @@ class FrankaCubeLiftEnvCfg(joint_pos_env_cfg.FrankaCubeLiftEnvCfg):
                 "data_type": "depth",
                 }
         )
+
+        ### 아래 부분에 point cloud 넣음 될듯?
+        self.observations.policy.point_cloud = ObsTerm(
+            func=mdp.point_cloud,
+            params={
+                "sensor_cfg": SceneEntityCfg("camera"),
+            }
+        )
+
+        '''
+        pointcloud = create_pointcloud_from_depth(
+            intrinsic_matrix=camera.data.intrinsic_matrices[camera_index],
+            depth=camera.data.output["distance_to_image_plane"][camera_index],
+            position=camera.data.pos_w[camera_index],
+            orientation=camera.data.quat_w_ros[camera_index],
+            device=sim.device,
+        )
+        '''
 
 
 
