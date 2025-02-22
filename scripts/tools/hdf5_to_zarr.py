@@ -68,6 +68,33 @@ def convert_hdf5_to_zarr(hdf5_path, zarr_path):
         zarr_data = zarr_root.create_group('data')
         zarr_meta = zarr_root.create_group('meta')
         
+        ### a = hdf['data']['demo_0']['obs']['point_cloud']
+
+        '''
+        import matplotlib.pyplot as plt
+        from mpl_toolkits.mplot3d import Axes3D
+
+        # 포인트 클라우드 데이터를 x, y, z로 분리
+        x = point_cloud_data[:, 0]
+        y = point_cloud_data[:, 1]
+        z = point_cloud_data[:, 2]
+
+        # 3D 플롯 생성
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+
+        # 포인트 클라우드 데이터 시각화
+        ax.scatter(x, y, z, c='b', marker='o', s=10)  # 'b'는 파란색, s는 마커 크기
+
+        # 축 레이블 설정
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+
+        # 플롯 표시
+        plt.show()
+        '''
+
         # Collect all episode data
         states = []
         actions = []
