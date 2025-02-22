@@ -31,19 +31,22 @@ from isaaclab.app import AppLauncher
 
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Record demonstrations for Isaac Lab environments.")
-parser.add_argument("--task", type=str, default=None, help="Name of the task.")
+parser.add_argument("--task", type=str, default='Isaac-Lift-Cube-Franka-IK-Rel-cam-v0', help="Name of the task.")
+# parser.add_argument("--task", type=str, default="Isaac-Lift-Cube-Franka-IK-Rel-v0", help="Name of the task.")
+# parser.add_argument("--task", type=str, default="Isaac-Stack-Cube-Franka-IK-Rel-v0", help="Name of the task.")
+# parser.add_argument("--enable_cameras", action="store_true", help="Enable camera rendering")
 parser.add_argument("--teleop_device", type=str, default="keyboard", help="Device for interacting with environment.")
 parser.add_argument(
-    "--dataset_file", type=str, default="./datasets/dataset.hdf5", help="File path to export recorded demos."
+    "--dataset_file", type=str, default="./datasets/dummy.hdf5", help="File path to export recorded demos."
 )
 parser.add_argument("--step_hz", type=int, default=30, help="Environment stepping rate in Hz.")
 parser.add_argument(
-    "--num_demos", type=int, default=0, help="Number of demonstrations to record. Set to 0 for infinite."
+    "--num_demos", type=int, default=1, help="Number of demonstrations to record. Set to 0 for infinite."
 )
 parser.add_argument(
     "--num_success_steps",
     type=int,
-    default=10,
+    default=1,
     help="Number of continuous steps with task success for concluding a demo as successful. Default is 10.",
 )
 # append AppLauncher cli args
@@ -59,7 +62,6 @@ app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
 """Rest everything follows."""
-
 import contextlib
 import gymnasium as gym
 import time
@@ -156,6 +158,8 @@ def main():
     env_cfg.terminations.time_out = None
 
     env_cfg.observations.policy.concatenate_terms = False
+
+    env_cfg.sim.enable_cameras = True
 
     env_cfg.recorders: ActionStateRecorderManagerCfg = ActionStateRecorderManagerCfg()
     env_cfg.recorders.dataset_export_dir_path = output_dir
