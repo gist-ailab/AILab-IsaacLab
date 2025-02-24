@@ -37,22 +37,25 @@ parser.add_argument("--task", type=str, default='Isaac-Lift-Cube-Franka-IK-Rel-c
 # parser.add_argument("--enable_cameras", action="store_true", help="Enable camera rendering")
 parser.add_argument("--teleop_device", type=str, default="keyboard", help="Device for interacting with environment.")
 parser.add_argument(
-    "--dataset_file", type=str, default="./datasets/dummy.hdf5", help="File path to export recorded demos."
+    "--dataset_file", type=str, default="./datasets/Lift_ver2.hdf5", help="File path to export recorded demos."
 )
 parser.add_argument("--step_hz", type=int, default=30, help="Environment stepping rate in Hz.")
 parser.add_argument(
-    "--num_demos", type=int, default=1, help="Number of demonstrations to record. Set to 0 for infinite."
+    "--num_demos", type=int, default=40, help="Number of demonstrations to record. Set to 0 for infinite."
 )
 parser.add_argument(
     "--num_success_steps",
     type=int,
-    default=1,
+    default=40,
     help="Number of continuous steps with task success for concluding a demo as successful. Default is 10.",
 )
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
 args_cli = parser.parse_args()
+
+if "cam" in args_cli.task.lower():
+    vars(args_cli)["enable_cameras"] = True
 
 if args_cli.teleop_device.lower() == "handtracking":
     vars(args_cli)["experience"] = f'{os.environ["ISAACLAB_PATH"]}/apps/isaaclab.python.xr.openxr.kit'
