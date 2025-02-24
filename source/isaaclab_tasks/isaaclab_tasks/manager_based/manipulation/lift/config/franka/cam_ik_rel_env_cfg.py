@@ -26,13 +26,18 @@ class FrankaCubeLiftEnvCfg(joint_pos_env_cfg.FrankaCubeLiftEnvCfg):
     camera = CameraCfg(
         prim_path="{ENV_REGEX_NS}/Table/cam",
         update_period=0.1,
-        height=480,
+        height=576,
         width=640,
         data_types=["rgb", "depth"],
         spawn=sim_utils.PinholeCameraCfg(
-            focal_length=24.0, focus_distance=400.0, horizontal_aperture=20.955, clipping_range=(0.1, 1.0e5)
+            # focal_length=24.0, focus_distance=400.0, horizontal_aperture=20.955, clipping_range=(0.1, 1.0e5)
+            focal_length=0.18, focus_distance=2,
+            horizontal_aperture=0.504, vertical_aperture=0.436,
+            clipping_range=(0.5, 3.86)
         ),
-        offset=CameraCfg.OffsetCfg(pos=(0.74, 0.0, 0.42), rot=(0.5, -0.5, 0.5, -0.5), convention="ros"),
+        # offset=CameraCfg.OffsetCfg(pos=(0.74, 0.0, 0.42), rot=(0.5, -0.5, 0.5, -0.5), convention="ros"),
+        # offset=CameraCfg.OffsetCfg(pos=(0.0, -0.86, 1.0), rot=(0.9238, 0.38268, 0.0, 0.0), convention="ros"),
+        offset=CameraCfg.OffsetCfg(pos=(0.0, -0.86, 1.0), rot=(0.92388, 0.38268, 0.0, 0.0), convention="opengl"),
     )
 
     def __post_init__(self):
@@ -77,6 +82,7 @@ class FrankaCubeLiftEnvCfg(joint_pos_env_cfg.FrankaCubeLiftEnvCfg):
             func=mdp.point_cloud,
             params={
                 "sensor_cfg": SceneEntityCfg("camera"),
+                "num_points": 1024,
             }
         )
 
