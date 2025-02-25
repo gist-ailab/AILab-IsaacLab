@@ -284,7 +284,7 @@ def image(
 def point_cloud(
     env: ManagerBasedEnv,
     sensor_cfg: SceneEntityCfg = SceneEntityCfg("camera"),
-    num_points: int = 512,
+    num_points: int = 1024,
 ) -> torch.Tensor:
     """Creates point cloud from depth image using camera intrinsics and pose.
 
@@ -307,21 +307,56 @@ def point_cloud(
         device=env.device
     )
 
-    # # Adaptive voxel downsampling
-    # pointcloud = adaptive_voxel_downsample(pointcloud, num_points)
+    unique_pointcloud = torch.unique(pointcloud, dim=0)
+
+    # import open3d as o3d
+    # unique_pointcloud, counts = torch.unique(pointcloud, dim=0, return_counts=True)
+    # def visualize_pointcloud_o3d(points: torch.Tensor):
+    #     """Visualize point cloud using Open3D.
+        
+    #     Args:
+    #         points: Point cloud tensor of shape (N, 3)
+    #     """
+    #     # Convert to numpy if on GPU
+    #     if points.is_cuda:
+    #         points = points.cpu()
+    #     points = points.numpy()
+        
+    #     # Create Open3D point cloud
+    #     pcd = o3d.geometry.PointCloud()
+    #     pcd.points = o3d.utility.Vector3dVector(points)
+        
+    #     # Visualize
+    #     o3d.visualization.draw_geometries([pcd])
+
+    # visualize_pointcloud_o3d(pointcloud)
+    
 
     # Uniform random sampling
-    if pointcloud.shape[0] > num_points:
+    if unique_pointcloud.shape[0] > num_points:
         # Random sampling if we have more points than needed
-        idx = torch.randperm(pointcloud.shape[0], device=env.device)[:num_points]
-        pointcloud = pointcloud[idx]
+        perm = torch.randperm(unique_pointcloud.shape[0], device=env.device)
+        sampled_pcd = unique_pointcloud[perm[:num_points]]
     else:
-        # If we have fewer points, sample with replacement
-        idx = torch.randint(pointcloud.shape[0], (num_points,), device=env.device)
-        pointcloud = pointcloud[idx]
+        # If we have fewer unique points than needed        
+        # 1. Calculate how many more points we need
+        remaining = num_points - unique_pointcloud.shape[0]
+        
+        # 2. Add noise to existing points to create new samples
+        if remaining > 0:
+            # Select points to duplicate with noise (can select same point multiple times)
+            idx = torch.randint(unique_pointcloud.shape[0], (remaining,), device=env.device)
+            selected = unique_pointcloud[idx]
+            
+            # Add small random noise to create "new" points
+            noise = torch.randn_like(selected) * 0.002  # Small noise
+            additional_points = selected + noise
+            
+            # Combine original unique points with additional points
+            sampled_pcd = torch.cat([unique_pointcloud, additional_points], dim=0)
 
     # shape: (num_points, 3)을 (1, num_points, 3)으로 확장. batch dimension 추가
-    return pointcloud.unsqueeze(0)
+    return sampled_pcd.unsqueeze(0)
 
 
 # 격자기반 point cloud sampling
