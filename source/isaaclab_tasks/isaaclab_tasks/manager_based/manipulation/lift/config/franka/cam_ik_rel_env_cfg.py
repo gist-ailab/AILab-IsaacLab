@@ -112,7 +112,6 @@ class FrankaCubeLiftEnvCfg(joint_pos_env_cfg.FrankaCubeLiftEnvCfg):
         )
 
 
-
 @configclass
 class FrankaCubeLiftEnvCfg_PLAY(FrankaCubeLiftEnvCfg):
     def __post_init__(self):
