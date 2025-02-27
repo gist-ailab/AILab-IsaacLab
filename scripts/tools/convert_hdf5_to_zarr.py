@@ -6,6 +6,27 @@ import argparse
 import shutil
 from tqdm import tqdm
 from termcolor import cprint
+import open3d as o3d  # Import Open3D
+import matplotlib.pyplot as plt # Import matplotlib
+
+
+def visualize_point_cloud(points):
+    """Visualizes a point cloud using Open3D."""
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = o3d.utility.Vector3dVector(points[:, :3])  # Assuming first 3 columns are xyz
+    if points.shape[1] > 3:  # If there are more than 3 columns, treat them as colors
+        pcd.colors = o3d.utility.Vector3dVector(points[:, 3:] / 255.0) # Normalize to 0-1 for colors
+    o3d.visualization.draw_geometries([pcd])
+
+
+def visualize_image(img_array):
+    """Visualizes an image using matplotlib"""
+    plt.figure()
+    plt.imshow(img_array)
+    plt.axis('off')  # Hide axis
+    plt.title("Sample Image")
+    plt.show()
+
 
 def hdf5_to_zarr(hdf5_path, zarr_path, chunk_size=100):
     """
@@ -51,22 +72,12 @@ def hdf5_to_zarr(hdf5_path, zarr_path, chunk_size=100):
             action_arrays.append(actions)
 
             # State
-            # initial_state_group = demo_group['initial_state']
-            # articulation_group = initial_state_group['articulation']
-            # robot_group = articulation_group['robot']
-            # joint_position = robot_group['joint_position'][:]
-            # joint_velocity = robot_group['joint_velocity'][:]
-            # root_pose = robot_group['root_pose'][:]
-
             ee_pose = obs_group['end_effector_pose'][:]
             ee_pose = np.squeeze(ee_pose, axis=1)
             joint_pos = obs_group['joint_pos'][:]
             gripper_joint_pos = joint_pos[:, -2:]
 
             # State : ee_pose + gripper_joint_pos
-            # state = np.concatenate(
-            #     (np.tile(ee_pose, [len(actions), 1]),
-            #      np.tile(gripper_joint_pos, [len(actions), 1])), axis=1)
             state = np.concatenate((ee_pose, gripper_joint_pos), axis=1)
             state_arrays.append(state.astype(np.float32))
 
@@ -89,10 +100,8 @@ def hdf5_to_zarr(hdf5_path, zarr_path, chunk_size=100):
     action_arrays = np.concatenate(action_arrays, axis=0)
     state_arrays = np.concatenate(state_arrays, axis=0)
     img_arrays = np.concatenate(img_arrays, axis=0)
-    img_arrays = np.transpose(img_arrays, (0, 2, 1, 3)) # Change image channel from (N,W,H,C) -> (N,H,W,C)
     point_cloud_arrays = np.concatenate(point_cloud_arrays, axis=0)
     depth_arrays = np.concatenate(depth_arrays, axis=0)
-    depth_arrays = np.transpose(depth_arrays, (0, 2, 1, 3)) # Change image channel from (N,W,H,C) -> (N,H,W,C)
     episode_ends_arrays = np.array(episode_ends_arrays)
 
     # Create zarr file
@@ -137,6 +146,14 @@ def hdf5_to_zarr(hdf5_path, zarr_path, chunk_size=100):
     print(f"action shape: {action_arrays.shape}, range: [{np.min(action_arrays)}, {np.max(action_arrays)}]")
     print(f"Conversion complete. Zarr file saved to {zarr_path}")
 
+    # Visualize sample data if enabled
+    if args.visualize:
+        print("Visualizing sample data...")
+        if len(img_arrays) > 0:
+            visualize_image(img_arrays[0])
+        if len(point_cloud_arrays) > 0:
+            visualize_point_cloud(point_cloud_arrays[0])
+
 
 def check_zarr(zarr_path):
     cprint(f"\n{'=' * 100}", 'green')
@@ -180,6 +197,8 @@ if __name__ == "__main__":
     #                     help="Overwrite the output Zarr file if it exists.")
     parser.add_argument("--no-overwrite", dest="overwrite", action="store_false", default=True,
                         help="Do not overwrite the output Zarr file if it exists. (Default: overwrite)")
+    parser.add_argument("--visualize", action="store_true", default=False,
+                        help="Visualize sample image and point cloud after conversion.")
     args = parser.parse_args()
 
     # Convert HDF5 to Zarr
