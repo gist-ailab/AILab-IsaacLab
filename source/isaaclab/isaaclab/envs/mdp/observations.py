@@ -659,3 +659,63 @@ Commands.
 def generated_commands(env: ManagerBasedRLEnv, command_name: str) -> torch.Tensor:
     """The generated command from command term in the command manager with the given name."""
     return env.command_manager.get_command(command_name)
+
+
+
+"""
+End-effector.
+"""
+
+
+def end_effector_pose(
+    env: ManagerBasedEnv,
+    articulation_name: str = "robot",
+    end_effector_name: str = "panda_hand",  # 로봇 모델의 end-effector 링크 이름
+    body_offset=None  # offset 추가 가능
+) -> torch.Tensor:
+    """Gets the end-effector pose (position and orientation).
+    
+    이 함수는 task_space_actions.py의 _compute_frame_pose와 동일한 방식으로
+    end-effector의 pose를 계산합니다.
+
+    Args:
+        env: The environment.
+        articulation_name: The name of the articulation. Defaults to "robot".
+        end_effector_name: The name of the end-effector link. Defaults to "panda_hand".
+        body_offset: Optional offset to apply to the body pose.
+
+    Returns:
+        A tensor of shape (1, 7) representing position (3) and quaternion (4).
+    """
+    # Get the robot articulation
+    articulation: Articulation = env.scene.articulations[articulation_name]
+    
+    # Get the body ID for the end-effector
+    body_ids, _ = articulation.find_bodies(end_effector_name)
+    if len(body_ids) == 0:
+        raise ValueError(f"Body '{end_effector_name}' not found in articulation '{articulation_name}'")
+    body_idx = body_ids[0]
+    
+    # Obtain quantities from simulation (task_space_actions.py의 _compute_frame_pose와 동일한 로직)
+    ee_pos_w = articulation.data.body_pos_w[:, body_idx]
+    ee_quat_w = articulation.data.body_quat_w[:, body_idx]
+    root_pos_w = articulation.data.root_pos_w
+    root_quat_w = articulation.data.root_quat_w
+    
+    # Compute the pose of the body in the root frame
+    ee_pose_b, ee_quat_b = math_utils.subtract_frame_transforms(
+        root_pos_w, root_quat_w, ee_pos_w, ee_quat_w
+    )
+    
+    # Account for the offset (body_offset이 제공된 경우)
+    if body_offset is not None:
+        offset_pos = torch.tensor(body_offset.pos, device=env.device).repeat(env.num_envs, 1)
+        offset_rot = torch.tensor(body_offset.rot, device=env.device).repeat(env.num_envs, 1)
+        ee_pose_b, ee_quat_b = math_utils.combine_frame_transforms(
+            ee_pose_b, ee_quat_b, offset_pos, offset_rot
+        )
+    
+    # Combine position and orientation into a single pose tensor (7D)
+    ee_pose = torch.cat([ee_pose_b.unsqueeze(0), ee_quat_b.unsqueeze(0)], dim=2)
+    
+    return ee_pose  # Shape: (1, num_envs, 7)
