@@ -101,14 +101,6 @@ class FrankaCubeLiftEnvCfg(joint_pos_env_cfg.FrankaCubeLiftEnvCfg):
             }
         )
 
-        self.observations.policy.point_cloud = ObsTerm(
-            func=mdp.point_cloud,
-            params={
-                "sensor_cfg": SceneEntityCfg("camera"),
-                "num_points": 1024,
-            }
-        )
-
         self.observations.policy.end_effector_pose = ObsTerm(
             func=mdp.end_effector_pose,
             params={
