@@ -193,8 +193,6 @@ if __name__ == "__main__":
                         help="Path to the output Zarr file.")
     parser.add_argument("--chunk_size", type=int, default=100,
                         help="Chunk size for Zarr arrays (default: 100).")
-    # parser.add_argument("--overwrite", action="store_true", default=True,
-    #                     help="Overwrite the output Zarr file if it exists.")
     parser.add_argument("--no-overwrite", dest="overwrite", action="store_false", default=True,
                         help="Do not overwrite the output Zarr file if it exists. (Default: overwrite)")
     parser.add_argument("--visualize", action="store_true", default=False,
