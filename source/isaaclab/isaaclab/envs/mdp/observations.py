@@ -20,7 +20,7 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers.manager_base import ManagerTermBase
 from isaaclab.managers.manager_term_cfg import ObservationTermCfg
 from isaaclab.sensors import Camera, Imu, RayCaster, RayCasterCamera, TiledCamera
-from isaaclab.sensors.camera.utils import create_pointcloud_from_depth
+from isaaclab.sensors.camera.utils import create_pointcloud_from_depth, create_pointcloud_from_rgbd
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv, ManagerBasedRLEnv
@@ -298,65 +298,105 @@ def point_cloud(
     # Get camera sensor
     sensor: Camera = env.scene.sensors[sensor_cfg.name]
     
-    # Create point cloud
-    pointcloud = create_pointcloud_from_depth(
+    # Create rgbd point cloud
+    point_cloud, rgb = create_pointcloud_from_rgbd(
         intrinsic_matrix=sensor.data.intrinsic_matrices[0],  # Using first camera
         depth=sensor.data.output["depth"][0],
+        rgb=sensor.data.output["rgb"][0],
         position=sensor.data.pos_w[0],
         orientation=sensor.data.quat_w_ros[0],
         device=env.device
     )
 
-    unique_pointcloud = torch.unique(pointcloud, dim=0)
+    # Find unique points and their indices
+    unique_pcd, inverse_indices = torch.unique(point_cloud, dim=0, return_inverse=True)
 
-    # import open3d as o3d
-    # unique_pointcloud, counts = torch.unique(pointcloud, dim=0, return_counts=True)
-    # def visualize_pointcloud_o3d(points: torch.Tensor):
-    #     """Visualize point cloud using Open3D.
-        
-    #     Args:
-    #         points: Point cloud tensor of shape (N, 3)
-    #     """
-    #     # Convert to numpy if on GPU
-    #     if points.is_cuda:
-    #         points = points.cpu()
-    #     points = points.numpy()
-        
-    #     # Create Open3D point cloud
-    #     pcd = o3d.geometry.PointCloud()
-    #     pcd.points = o3d.utility.Vector3dVector(points)
-        
-    #     # Visualize
-    #     o3d.visualization.draw_geometries([pcd])
+    # Get unique RGB values
+    unique_rgb = torch.zeros((unique_pcd.shape[0], rgb.shape[1]), dtype=rgb.dtype, device=rgb.device)
+    # 각 원본 포인트가 매핑되는 고유 포인트의 인덱스를 사용해 색상 매핑
+    for i in range(unique_pcd.shape[0]):
+        # i번째 unique 포인트에 해당하는 원본 포인트들의 마스크
+        mask = (inverse_indices == i)
+        if mask.sum() > 0:
+            # 해당 마스크에 해당하는 rgb값들의 평균을 사용
+            unique_rgb[i] = rgb[mask].mean(dim=0)
 
-    # visualize_pointcloud_o3d(pointcloud)
     
+    '''
+    import open3d as o3d
+    import numpy as np
+    def visualize_pointcloud_o3d(points: torch.Tensor, color: torch.Tensor = None):
+        """Visualize point cloud using Open3D.
+        
+        Args:
+            points: Point cloud tensor of shape (N, 3)
+        """
+        # Convert to numpy if on GPU
+        if points.is_cuda:
+            points = points.cpu()
+        points = points.numpy()
+
+        # Create Open3D point cloud
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(points)
+
+        if color is not None:
+            if color.is_cuda:
+                color = color.cpu()
+            color = color.numpy()
+            if np.max(color) > 1:
+                color = color / 255.0
+            pcd.colors = o3d.utility.Vector3dVector(color)
+
+        # Create a visualizer with a gray background
+        vis = o3d.visualization.VisualizerWithEditing()
+        vis.create_window()
+        vis.add_geometry(pcd)
+
+        opt = vis.get_render_option()
+        opt.background_color = np.asarray([0.5, 0.5, 0.5])  # Gray color (RGB)
+
+        vis.run()
+        vis.destroy_window()
+
+
+    visualize_pointcloud_o3d(unique_pcd, unique_rgb)
+    visualize_pointcloud_o3d(unique_pcd)
+    visualize_pointcloud_o3d(point_cloud, rgb)
+    '''
 
     # Uniform random sampling
-    if unique_pointcloud.shape[0] > num_points:
+    if unique_pcd.shape[0] > num_points:
         # Random sampling if we have more points than needed
-        perm = torch.randperm(unique_pointcloud.shape[0], device=env.device)
-        sampled_pcd = unique_pointcloud[perm[:num_points]]
+        perm = torch.randperm(unique_pcd.shape[0], device=env.device)
+        sampled_pcd = unique_pcd[perm[:num_points]]
+        sampled_rgb = unique_rgb[perm[:num_points]]
     else:
         # If we have fewer unique points than needed        
         # 1. Calculate how many more points we need
-        remaining = num_points - unique_pointcloud.shape[0]
+        remaining = num_points - unique_pcd.shape[0]
         
         # 2. Add noise to existing points to create new samples
         if remaining > 0:
             # Select points to duplicate with noise (can select same point multiple times)
-            idx = torch.randint(unique_pointcloud.shape[0], (remaining,), device=env.device)
-            selected = unique_pointcloud[idx]
-            
+            idx = torch.randint(unique_pcd.shape[0], (remaining,), device=env.device)
+            selected_pcd = unique_pcd[idx]
+            selected_rgb = unique_rgb[idx]
+
             # Add small random noise to create "new" points
-            noise = torch.randn_like(selected) * 0.002  # Small noise
-            additional_points = selected + noise
+            noise = torch.randn_like(selected_pcd) * 0.002  # Small noise
+            additional_points = selected_pcd + noise
+            additional_rgb = selected_rgb
             
             # Combine original unique points with additional points
-            sampled_pcd = torch.cat([unique_pointcloud, additional_points], dim=0)
+            sampled_pcd = torch.cat([unique_pcd, additional_points], dim=0)
+            sampled_rgb = torch.cat([unique_rgb, additional_rgb], dim=0)
+
+    # Concatenate sampled point cloud and RGB
+    sampled_data = torch.cat([sampled_pcd, sampled_rgb], dim=1)
 
     # shape: (num_points, 3)을 (1, num_points, 3)으로 확장. batch dimension 추가
-    return sampled_pcd.unsqueeze(0)
+    return sampled_data.unsqueeze(0)
 
 
 # 격자기반 point cloud sampling
