@@ -8,6 +8,7 @@ from tqdm import tqdm
 from termcolor import cprint
 import open3d as o3d  # Import Open3D
 import matplotlib.pyplot as plt # Import matplotlib
+import torch
 
 
 def visualize_point_cloud(points):
@@ -16,7 +17,30 @@ def visualize_point_cloud(points):
     pcd.points = o3d.utility.Vector3dVector(points[:, :3])  # Assuming first 3 columns are xyz
     if points.shape[1] > 3:  # If there are more than 3 columns, treat them as colors
         pcd.colors = o3d.utility.Vector3dVector(points[:, 3:] / 255.0) # Normalize to 0-1 for colors
-    o3d.visualization.draw_geometries([pcd])
+    # o3d.visualization.draw_geometries([pcd])
+
+    # Create a coordinate frame for reference
+    coord_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)
+    
+    # Create a visualizer with custom settings
+    vis = o3d.visualization.Visualizer()
+    vis.create_window()
+    
+    # Add geometries
+    vis.add_geometry(pcd)
+    vis.add_geometry(coord_frame)
+    
+    # Get render options and set background color to gray
+    opt = vis.get_render_option()
+    opt.background_color = np.asarray([0.5, 0.5, 0.5])  # Gray color (RGB)
+    
+    # Set camera position for better viewing
+    ctr = vis.get_view_control()
+    ctr.set_zoom(0.8)  # Adjust zoom level as needed
+    
+    # Run the visualizer
+    vis.run()
+    vis.destroy_window()
 
 
 def visualize_image(img_array):
@@ -26,6 +50,89 @@ def visualize_image(img_array):
     plt.axis('off')  # Hide axis
     plt.title("Sample Image")
     plt.show()
+
+
+def sample_rgb_point_cloud(point_cloud, num_points=1024, device='cuda'):
+    """
+    Samples a fixed number of points from the input point cloud.
+    Args:
+        point_cloud: Input point cloud with shape (N, 6) where N is the number of points.
+        num_points: Number of points to sample.
+    Returns:
+        Sampled point cloud with shape (num_points, 6).
+    """
+    
+    # Convert numpy array to torch tensor if needed
+    if isinstance(point_cloud, np.ndarray):
+        point_cloud = torch.from_numpy(point_cloud).to(device)
+
+    # Get the shape information
+    num_frames, num_points_orig, feat_dim = point_cloud.shape
+
+    # Initialize output tensor
+    sampled_point_clouds = []
+
+    # Process each frame
+    for frame_idx in tqdm(range(num_frames), desc="Sampling point clouds"):
+        # Get current frame's point cloud
+        pc = point_cloud[frame_idx]
+        
+        # Split into position and color
+        positions = pc[:, :3]
+        colors = pc[:, 3:]
+        
+        # Find unique points and their indices
+        unique_pcd, inverse_indices = torch.unique(positions, dim=0, return_inverse=True)
+        
+        # Get unique RGB values by averaging colors for each unique position
+        unique_rgb = torch.zeros((unique_pcd.shape[0], 3), dtype=colors.dtype, device=colors.device)
+        
+        for i in range(unique_pcd.shape[0]):
+            # i번째 unique 포인트에 해당하는 원본 포인트들의 마스크
+            mask = (inverse_indices == i)
+            if mask.sum() > 0:
+                # 해당 마스크에 해당하는 rgb값들의 평균을 사용
+                unique_rgb[i] = colors[mask].mean(dim=0)
+        
+        # Sample the points to match num_points
+        if unique_pcd.shape[0] > num_points:
+            # Random sampling if we have more points than needed
+            perm = torch.randperm(unique_pcd.shape[0], device=device)
+            sampled_pcd = unique_pcd[perm[:num_points]]
+            sampled_rgb = unique_rgb[perm[:num_points]]
+        else:
+            # If we have fewer unique points than needed
+            remaining = num_points - unique_pcd.shape[0]
+            
+            if remaining > 0:
+                # Select points to duplicate with noise (can select same point multiple times)
+                idx = torch.randint(unique_pcd.shape[0], (remaining,), device=device)
+                selected_pcd = unique_pcd[idx]
+                selected_rgb = unique_rgb[idx]
+                
+                # Add small random noise to create "new" points
+                noise = torch.randn_like(selected_pcd) * 0.002  # Small noise
+                additional_points = selected_pcd + noise
+                additional_rgb = selected_rgb
+                
+                # Combine original unique points with additional points
+                sampled_pcd = torch.cat([unique_pcd, additional_points], dim=0)
+                sampled_rgb = torch.cat([unique_rgb, additional_rgb], dim=0)
+            else:
+                # If we already have the exact number of points needed
+                sampled_pcd = unique_pcd
+                sampled_rgb = unique_rgb
+        
+        # Concatenate position and color data
+        sampled_data = torch.cat([sampled_pcd, sampled_rgb], dim=1)
+        
+        # Add to results
+        sampled_point_clouds.append(sampled_data)
+    
+    # Stack all frames into a single tensor
+    result = torch.stack(sampled_point_clouds, dim=0)
+    
+    return result
 
 
 def hdf5_to_zarr(hdf5_path, zarr_path, chunk_size=100):
@@ -90,6 +197,7 @@ def hdf5_to_zarr(hdf5_path, zarr_path, chunk_size=100):
             depth_arrays.append(depth_image)
             # Get point cloud data
             point_cloud = obs_group['point_cloud'][:]
+            # sampled_pcd = sample_rgb_point_cloud(point_cloud, num_points=1024)
             point_cloud_arrays.append(point_cloud)
 
             # Update total count and store episode end index
@@ -186,10 +294,10 @@ def check_zarr(zarr_path):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Convert HDF5 file to Zarr format.")
     parser.add_argument("--hdf5_path", type=str,
-                        default='/home/bak/Projects/AILab-IsaacLab/datasets/zzz.hdf5',
+                        default='/home/bak/Projects/AILab-IsaacLab/datasets/xyz.hdf5',
                         help="Path to the input HDF5 file.")
     parser.add_argument("--zarr_path", type=str,
-                        default='/home/bak/Projects/AILab-IsaacLab/datasets/zzz.zarr',
+                        default='/home/bak/Projects/AILab-IsaacLab/datasets/xyz.zarr',
                         help="Path to the output Zarr file.")
     parser.add_argument("--chunk_size", type=int, default=100,
                         help="Chunk size for Zarr arrays (default: 100).")
