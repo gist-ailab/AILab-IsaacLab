@@ -24,26 +24,7 @@ from isaaclab_assets.robots.franka import FRANKA_PANDA_HIGH_PD_CFG  # isort: ski
 @configclass
 class FrankaCubeLiftEnvCfg(joint_pos_env_cfg.FrankaCubeLiftEnvCfg):
     
-    # Azure Kinect configuration
-    camera = CameraCfg(
-        prim_path="{ENV_REGEX_NS}/Table/cam",
-        update_period=0.1,
-        height=576,
-        width=640,
-        data_types=["rgb", "depth"],
-        spawn=sim_utils.PinholeCameraCfg(
-            focal_length=0.18, focus_distance=1.2,
-            horizontal_aperture=0.504, vertical_aperture=0.436,
-            # clipping_range=(0.5, 3.86)  # Azure Kinect clipping range
-            clipping_range=(0.2, 1.3)  # clipping table
-        ),
-        # offset=CameraCfg.OffsetCfg(pos=(0.74, 0.0, 0.42), rot=(0.5, -0.5, 0.5, -0.5), convention="ros"),
-        # offset=CameraCfg.OffsetCfg(pos=(0.0, -0.86, 1.0), rot=(0.9238, 0.38268, 0.0, 0.0), convention="ros"),
-        # offset=CameraCfg.OffsetCfg(pos=(0.0, -0.86, 1.0), rot=(0.92388, 0.38268, 0.0, 0.0), convention="opengl"),
-        offset=CameraCfg.OffsetCfg(pos=(0.0, -0.2, 1.3), rot=(1.0, 0.0, 0.0, 0.0), convention="opengl"),
-    )
-
-    # # Default camera configuration
+    # # Azure Kinect configuration
     # camera = CameraCfg(
     #     prim_path="{ENV_REGEX_NS}/Table/cam",
     #     update_period=0.1,
@@ -51,10 +32,29 @@ class FrankaCubeLiftEnvCfg(joint_pos_env_cfg.FrankaCubeLiftEnvCfg):
     #     width=640,
     #     data_types=["rgb", "depth"],
     #     spawn=sim_utils.PinholeCameraCfg(
-    #         clipping_range=(0.1, 1.3)  # clipping table
+    #         focal_length=0.18, focus_distance=1.2,
+    #         horizontal_aperture=0.504, vertical_aperture=0.436,
+    #         # clipping_range=(0.5, 3.86)  # Azure Kinect clipping range
+    #         clipping_range=(0.2, 1.3)  # clipping table
     #     ),
-    #     offset=CameraCfg.OffsetCfg(pos=(0.0, -0.1, 1.3), rot=(1.0, 0.0, 0.0, 0.0), convention="opengl"),
+    #     # offset=CameraCfg.OffsetCfg(pos=(0.74, 0.0, 0.42), rot=(0.5, -0.5, 0.5, -0.5), convention="ros"),
+    #     # offset=CameraCfg.OffsetCfg(pos=(0.0, -0.86, 1.0), rot=(0.9238, 0.38268, 0.0, 0.0), convention="ros"),
+    #     # offset=CameraCfg.OffsetCfg(pos=(0.0, -0.86, 1.0), rot=(0.92388, 0.38268, 0.0, 0.0), convention="opengl"),
+    #     offset=CameraCfg.OffsetCfg(pos=(0.0, -0.2, 1.3), rot=(1.0, 0.0, 0.0, 0.0), convention="opengl"),
     # )
+
+    # Default camera configuration
+    camera = CameraCfg(
+        prim_path="{ENV_REGEX_NS}/Table/cam",
+        update_period=0.1,
+        height=576,
+        width=640,
+        data_types=["rgb", "depth"],
+        spawn=sim_utils.PinholeCameraCfg(
+            clipping_range=(0.1, 1.3)  # clipping table
+        ),
+        offset=CameraCfg.OffsetCfg(pos=(0.0, -0.1, 1.3), rot=(1.0, 0.0, 0.0, 0.0), convention="opengl"),
+    )
 
     def __post_init__(self):
         # Set camera in scene first
@@ -91,6 +91,14 @@ class FrankaCubeLiftEnvCfg(joint_pos_env_cfg.FrankaCubeLiftEnvCfg):
                 "sensor_cfg": SceneEntityCfg("camera"),
                 "data_type": "depth",
                 }
+        )
+
+        self.observations.policy.point_cloud = ObsTerm(
+            func=mdp.point_cloud,
+            params={
+                "sensor_cfg": SceneEntityCfg("camera"),
+                "num_points": 1024,
+            }
         )
 
         self.observations.policy.point_cloud = ObsTerm(
