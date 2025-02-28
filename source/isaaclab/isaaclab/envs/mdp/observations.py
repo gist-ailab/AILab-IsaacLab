@@ -281,6 +281,53 @@ def image(
     return images.clone()
 
 
+def visualize_torch_image(img_tensor, title="Torch Image", batch_idx=0):
+    """
+    torch 텐서 형태의 이미지를 시각화합니다.
+    
+    Args:
+        img_tensor: torch.Size([batch, height, width, channels]) 형태의 텐서
+        title: 표시할 제목
+        batch_idx: 여러 이미지 중 표시할 이미지의 인덱스
+    """
+    import numpy as np  # numpy 임포트 추가
+    import matplotlib.pyplot as plt  # matplotlib 임포트 추가
+    
+    # GPU -> CPU, torch -> numpy 변환
+    if img_tensor.is_cuda:
+        img_tensor = img_tensor.cpu()
+    
+    # 첫 번째(혹은 지정된) 배치의 이미지만 선택
+    img = img_tensor[batch_idx].numpy()
+    
+    # 값 범위 확인
+    min_val = img.min()
+    max_val = img.max()
+    
+    # 이미지 데이터 타입과 범위에 따른 처리
+    if img.dtype == np.float32 or img.dtype == np.float64:
+        if max_val > 1.0 or min_val < 0.0:
+            print(f"Warning: Image values outside [0,1] range. Min: {min_val}, Max: {max_val}")
+            # 0-1 범위로 정규화
+            img = (img - min_val) / (max_val - min_val) if max_val > min_val else img
+        # 음수값이 있으면 (이미 정규화된 경우) 0-1 범위로 변환
+        elif min_val < 0:
+            img = (img + 1) / 2  # -1,1 -> 0,1 변환
+    
+    # RGB 이미지 표시
+    plt.figure(figsize=(10, 8))
+    plt.imshow(img)
+    plt.title(f"{title} (Shape: {img.shape})")
+    plt.axis('off')
+    plt.tight_layout()
+    plt.show()
+    
+    # 이미지 정보 출력
+    print(f"Image shape: {img.shape}")
+    print(f"Value range: [{img.min():.4f}, {img.max():.4f}]")
+    print(f"Data type: {img.dtype}")
+
+
 def point_cloud(
     env: ManagerBasedEnv,
     sensor_cfg: SceneEntityCfg = SceneEntityCfg("camera"),
@@ -311,15 +358,15 @@ def point_cloud(
     # Find unique points and their indices
     unique_pcd, inverse_indices = torch.unique(point_cloud, dim=0, return_inverse=True)
 
-    # Get unique RGB values
+    # 각 unique 포인트가 몇 번 등장했는지 계산 (평균을 위해 나중에 사용됨)
+    counts = torch.bincount(inverse_indices, minlength=unique_pcd.shape[0]).unsqueeze(1)
+
+    # 각 고유한 포인트에 해당하는 rgb값 합산
     unique_rgb = torch.zeros((unique_pcd.shape[0], rgb.shape[1]), dtype=rgb.dtype, device=rgb.device)
-    # 각 원본 포인트가 매핑되는 고유 포인트의 인덱스를 사용해 색상 매핑
-    for i in range(unique_pcd.shape[0]):
-        # i번째 unique 포인트에 해당하는 원본 포인트들의 마스크
-        mask = (inverse_indices == i)
-        if mask.sum() > 0:
-            # 해당 마스크에 해당하는 rgb값들의 평균을 사용
-            unique_rgb[i] = rgb[mask].mean(dim=0)
+    unique_rgb.scatter_add_(0, inverse_indices.unsqueeze(1).expand(-1, rgb.shape[1]), rgb)
+
+    # 평균값으로 변환 (sum / count)
+    unique_rgb = unique_rgb / counts.clamp(min=1)
 
     
     '''
