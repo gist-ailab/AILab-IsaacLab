@@ -156,103 +156,148 @@ def hdf5_to_zarr(hdf5_path, zarr_path, chunk_size=100):
             print(f"Error: {args.zarr_path} already exists. Use --overwrite to overwrite it.")
             exit(1)
 
-    # Initialize lists to collect all data
-    img_arrays = []
-    point_cloud_arrays = []
-    depth_arrays = []
-    state_arrays = []
-    action_arrays = []
-    episode_ends_arrays = []
-    total_count = 0
-    episode_count = 0
-
-    with h5py.File(hdf5_path, 'r') as hdf5_file:
-        # Iterate through demos
-        for demo_name in tqdm(sorted(hdf5_file['data'].keys()), desc=f"Processing {hdf5_path}"):
-        # for demo_name in sorted(hdf5_file['data'].keys()):
-            episode_count += 1
-            demo_group = hdf5_file['data'][demo_name]
-            obs_group = demo_group['obs']
-
-            # Actions
-            actions = obs_group['actions'][:]
-            action_arrays.append(actions)
-
-            # State
-            ee_pose = obs_group['end_effector_pose'][:]
-            ee_pose = np.squeeze(ee_pose, axis=1)
-            joint_pos = obs_group['joint_pos'][:]
-            gripper_joint_pos = joint_pos[:, -2:]
-
-            # State : ee_pose + gripper_joint_pos
-            state = np.concatenate((ee_pose, gripper_joint_pos), axis=1)
-            state_arrays.append(state.astype(np.float32))
-
-            # Vision data           
-            # Get RGB image data
-            rgb_image = obs_group['rgb_image'][:]  # Should be shape (num_frames, H, W, 3)
-            img_arrays.append(rgb_image)
-            # Get depth data
-            depth_image = obs_group['depth_image'][:]
-            depth_arrays.append(depth_image)
-            # Get point cloud data
-            point_cloud = obs_group['point_cloud'][:]
-            # sampled_pcd = sample_rgb_point_cloud(point_cloud, num_points=1024)
-            point_cloud_arrays.append(point_cloud)
-
-            # Update total count and store episode end index
-            total_count += len(actions)
-            episode_ends_arrays.append(total_count)
-
-    # Concatenate all arrays
-    action_arrays = np.concatenate(action_arrays, axis=0)
-    state_arrays = np.concatenate(state_arrays, axis=0)
-    img_arrays = np.concatenate(img_arrays, axis=0)
-    point_cloud_arrays = np.concatenate(point_cloud_arrays, axis=0)
-    depth_arrays = np.concatenate(depth_arrays, axis=0)
-    episode_ends_arrays = np.array(episode_ends_arrays)
-
-    # Create zarr file
+    # Create zarr file and groups
     zarr_root = zarr.group(zarr_path)
     zarr_data = zarr_root.create_group('data')
     zarr_meta = zarr_root.create_group('meta')
-
+    
     # Set up compressor
     compressor = zarr.Blosc(cname='zstd', clevel=3, shuffle=1)
     
-    # Define chunk sizes
-    img_chunk_size = (chunk_size, *img_arrays.shape[1:])
-    state_chunk_size = (chunk_size, state_arrays.shape[1])
-    point_cloud_chunk_size = (chunk_size, *point_cloud_arrays.shape[1:])
-    depth_chunk_size = (chunk_size, *depth_arrays.shape[1:])
-    action_chunk_size = (chunk_size, action_arrays.shape[1])
+    # First scan to get shapes and total size
+    total_frames = 0
+    episode_ends = []
     
-    print('\n')
-    cprint('-' * 100, 'cyan')
-    cprint(f'Saving data to {zarr_path}', 'cyan')
-    cprint('-' * 100, 'cyan')
-
-    # Create datasets with all data at once
-    zarr_data.create_dataset('img', data=img_arrays, chunks=img_chunk_size, dtype='uint8',
-                             overwrite=True, compressor=compressor)
-    zarr_data.create_dataset('state', data=state_arrays, chunks=state_chunk_size, dtype='float32',
-                             overwrite=True, compressor=compressor)
-    zarr_data.create_dataset('point_cloud', data=point_cloud_arrays, chunks=point_cloud_chunk_size, dtype='float32',
-                             overwrite=True, compressor=compressor)
-    zarr_data.create_dataset('depth', data=depth_arrays, chunks=depth_chunk_size, dtype='float32',
-                             overwrite=True, compressor=compressor)
-    zarr_data.create_dataset('action', data=action_arrays, chunks=action_chunk_size, dtype='float32',
-                             overwrite=True, compressor=compressor)
-    zarr_meta.create_dataset('episode_ends', data=episode_ends_arrays, dtype='int64', overwrite=True, compressor=compressor)
-
+    # Analyze first episode to get data shapes
+    with h5py.File(hdf5_path, 'r') as hdf5_file:
+        first_demo_name = sorted(hdf5_file['data'].keys())[0]
+        first_demo = hdf5_file['data'][first_demo_name]
+        first_obs = first_demo['obs']
+        
+        # Get sample shapes from first demo
+        sample_action = first_obs['actions'][0]
+        sample_ee_pose = first_obs['end_effector_pose'][0]
+        sample_joint_pos = first_obs['joint_pos'][0]
+        sample_rgb = first_obs['rgb_image'][0]
+        sample_depth = first_obs['depth_image'][0]
+        sample_pc = first_obs['point_cloud'][0]
+        
+        # Prepare state shape
+        sample_ee_pose = np.squeeze(sample_ee_pose, axis=0)  # Remove singleton dimension if present
+        sample_gripper = sample_joint_pos[-2:]
+        sample_state = np.concatenate((sample_ee_pose, sample_gripper))
+        
+        # Count total frames and create episode ends list
+        for demo_name in tqdm(sorted(hdf5_file['data'].keys()), desc="Counting frames"):
+            demo_group = hdf5_file['data'][demo_name]
+            obs_group = demo_group['obs']
+            frames = len(obs_group['actions'])
+            total_frames += frames
+            episode_ends.append(total_frames)
+    
+    # Create datasets with known shapes and total size
+    img_ds = zarr_data.create_dataset('img', 
+                                      shape=(total_frames, *sample_rgb.shape),
+                                      chunks=(chunk_size, *sample_rgb.shape),
+                                      dtype='uint8',
+                                      compressor=compressor)
+    
+    state_ds = zarr_data.create_dataset('state', 
+                                        shape=(total_frames, len(sample_state)),
+                                        chunks=(chunk_size, len(sample_state)),
+                                        dtype='float32',
+                                        compressor=compressor)
+    
+    point_cloud_ds = zarr_data.create_dataset('point_cloud', 
+                                             shape=(total_frames, *sample_pc.shape),
+                                             chunks=(chunk_size, *sample_pc.shape),
+                                             dtype='float32',
+                                             compressor=compressor)
+    
+    depth_ds = zarr_data.create_dataset('depth', 
+                                       shape=(total_frames, *sample_depth.shape),
+                                       chunks=(chunk_size, *sample_depth.shape),
+                                       dtype='float32',
+                                       compressor=compressor)
+    
+    action_ds = zarr_data.create_dataset('action', 
+                                        shape=(total_frames, len(sample_action)),
+                                        chunks=(chunk_size, len(sample_action)),
+                                        dtype='float32',
+                                        compressor=compressor)
+    
+    # Save episode ends metadata
+    zarr_meta.create_dataset('episode_ends', 
+                            data=np.array(episode_ends),
+                            dtype='int64',
+                            compressor=compressor)
+    
+    # Now fill the datasets episode by episode
+    current_idx = 0
+    with h5py.File(hdf5_path, 'r') as hdf5_file:
+        for demo_name in tqdm(sorted(hdf5_file['data'].keys()), desc="Processing episodes"):
+            try:
+                demo_group = hdf5_file['data'][demo_name]
+                obs_group = demo_group['obs']
+                
+                # Get data
+                actions = obs_group['actions'][:]
+                episode_length = len(actions)
+                
+                # Store actions
+                action_ds[current_idx:current_idx + episode_length] = actions
+                
+                # Process and store state
+                ee_pose = obs_group['end_effector_pose'][:]
+                ee_pose = np.squeeze(ee_pose, axis=1)  # Remove singleton dimension if present
+                joint_pos = obs_group['joint_pos'][:]
+                gripper_joint_pos = joint_pos[:, -2:]
+                state = np.concatenate((ee_pose, gripper_joint_pos), axis=1)
+                state_ds[current_idx:current_idx + episode_length] = state.astype(np.float32)
+                
+                # Store RGB image data
+                rgb_image = obs_group['rgb_image'][:]
+                img_ds[current_idx:current_idx + episode_length] = rgb_image
+                
+                # Store depth data
+                depth_image = obs_group['depth_image'][:]
+                depth_ds[current_idx:current_idx + episode_length] = depth_image
+                
+                # Store point cloud data
+                point_cloud = obs_group['point_cloud'][:]
+                point_cloud_ds[current_idx:current_idx + episode_length] = point_cloud
+                
+                # Update the current index
+                current_idx += episode_length
+                
+            except Exception as e:
+                cprint(f"Error processing episode {demo_name}: {e}", "red")
+                # Continue with next episode instead of failing
+                continue
+    
     # Print statistics
-    print(f"Total {episode_count} demos")
-    print(f"img shape: {img_arrays.shape}, range: [{np.min(img_arrays)}, {np.max(img_arrays)}]")
-    print(f"point_cloud shape: {point_cloud_arrays.shape}, range: [{np.min(point_cloud_arrays)}, {np.max(point_cloud_arrays)}]")
-    print(f"depth shape: {depth_arrays.shape}, range: [{np.min(depth_arrays)}, {np.max(depth_arrays)}]")
-    print(f"state shape: {state_arrays.shape}, range: [{np.min(state_arrays)}, {np.max(state_arrays)}]")
-    print(f"action shape: {action_arrays.shape}, range: [{np.min(action_arrays)}, {np.max(action_arrays)}]")
+    episode_count = len(episode_ends)
+    print(f"Total {episode_count} demos, {total_frames} frames successfully processed")
+    
+    # Print sample data statistics
+    print("\nData statistics:")
+    img_sample = img_ds[0]
+    print(f"img shape: {img_ds.shape}, range: [{np.min(img_sample)}, {np.max(img_sample)}]")
+    
+    pc_sample = point_cloud_ds[0]
+    print(f"point_cloud shape: {point_cloud_ds.shape}, range: [{np.min(pc_sample)}, {np.max(pc_sample)}]")
+    
+    depth_sample = depth_ds[0]
+    print(f"depth shape: {depth_ds.shape}, range: [{np.min(depth_sample)}, {np.max(depth_sample)}]")
+    
+    state_sample = state_ds[0]
+    print(f"state shape: {state_ds.shape}, range: [{np.min(state_sample)}, {np.max(state_sample)}]")
+    
+    action_sample = action_ds[0]
+    print(f"action shape: {action_ds.shape}, range: [{np.min(action_sample)}, {np.max(action_sample)}]")
+    
     print(f"Conversion complete. Zarr file saved to {zarr_path}")
+
 
     # Visualize sample data if enabled
     if args.visualize:
@@ -294,10 +339,10 @@ def check_zarr(zarr_path):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Convert HDF5 file to Zarr format.")
     parser.add_argument("--hdf5_path", type=str,
-                        default='/home/bak/Projects/AILab-IsaacLab/datasets/xyz.hdf5',
+                        default='/home/bak/Projects/AILab-IsaacLab/datasets/Lift.hdf5',
                         help="Path to the input HDF5 file.")
     parser.add_argument("--zarr_path", type=str,
-                        default='/home/bak/Projects/AILab-IsaacLab/datasets/xyz.zarr',
+                        default='/home/bak/Projects/AILab-IsaacLab/datasets/Lift.zarr',
                         help="Path to the output Zarr file.")
     parser.add_argument("--chunk_size", type=int, default=100,
                         help="Chunk size for Zarr arrays (default: 100).")
