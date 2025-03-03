@@ -1,0 +1,39 @@
+name: isaaclab_lift
+
+task_name: lift
+
+shape_meta: &shape_meta
+  # acceptable types: rgb, low_dim
+  obs:
+    point_cloud:
+      shape: [1024, 3]
+      type: point_cloud
+    # imagin_robot:
+    #   shape: [96, 7]
+    #   type: point_cloud
+    agent_pos:
+      shape: [9]
+      type: low_dim
+  action:
+    shape: [7]
+
+# env_runner: null
+
+env_runner:
+  _target_: diffusion_policy_3d.env_runner.isaaclab_runner.IsaacLabRunner
+  n_train: 30
+  max_steps: 30
+  n_obs_steps: ${n_obs_steps}
+  n_action_steps: ${n_action_steps}
+  fps: 10
+  task_name: lift
+
+dataset:
+  _target_: diffusion_policy_3d.dataset.isaaclab_dataset.IsaacLabDataset
+  zarr_path: /home/bak/Projects/3D-Diffusion-Policy/3D-Diffusion-Policy/data/isaaclab_lift.zarr
+  horizon: ${horizon}
+  pad_before: ${eval:'${n_obs_steps}-1'}
+  pad_after: ${eval:'${n_action_steps}-1'}
+  seed: 42
+  val_ratio: 0.02
+  max_train_episodes: 90
