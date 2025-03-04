@@ -30,7 +30,7 @@ env_runner:
 
 dataset:
   _target_: diffusion_policy_3d.dataset.isaaclab_dataset.IsaacLabDataset
-  zarr_path: /home/bak/Projects/3D-Diffusion-Policy/3D-Diffusion-Policy/data/isaaclab_lift.zarr
+  zarr_path: /home/bak/Projects/AILab-IsaacLab/datasets/isaaclab_lift.zarr
   horizon: ${horizon}
   pad_before: ${eval:'${n_obs_steps}-1'}
   pad_after: ${eval:'${n_action_steps}-1'}

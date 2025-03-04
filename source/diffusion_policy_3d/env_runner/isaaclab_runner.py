@@ -8,7 +8,9 @@ from diffusion_policy_3d.policy.base_policy import BasePolicy
 from diffusion_policy_3d.common.pytorch_util import dict_apply
 
 # 올바른 임포트 경로
-from isaaclab_dp3.diffusion_policy_3d.env.isaaclab.isaaclab_wrapper import IsaacLabWrapper
+# from isaaclab_dp3.diffusion_policy_3d.env.isaaclab.isaaclab_wrapper import IsaacLabWrapper
+# from ..env.isaaclab.isaaclab_wrapper import IsaacLabWrapper
+from diffusion_policy_3d.env.isaaclab.isaaclab_wrapper import IsaacLabWrapper
 
 class IsaacLabRunner(BaseRunner):
     """Isaac Lab 환경에서 정책을 평가하기 위한 러너 클래스"""
