@@ -1,7 +1,6 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="isaaclab_dp3",
-    version="0.1.0",
+    name="diffusion_policy_3d",
     packages=find_packages(),
 )

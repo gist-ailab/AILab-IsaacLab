@@ -1,3 +1,10 @@
+from isaaclab.app import AppLauncher
+
+# launch omniverse app
+app_launcher = AppLauncher(headless=True)
+simulation_app = app_launcher.app
+
+
 import os
 import hydra
 import torch
