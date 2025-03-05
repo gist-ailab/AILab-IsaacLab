@@ -21,12 +21,14 @@ shape_meta: &shape_meta
 
 env_runner:
   _target_: diffusion_policy_3d.env_runner.isaaclab_runner.IsaacLabRunner
-  n_train: 30
+  eval_episodes: 20
   max_steps: 30
   n_obs_steps: ${n_obs_steps}
   n_action_steps: ${n_action_steps}
   fps: 10
   task_name: lift
+  device: ${training.device}
+  # use_point_crop: ${policy.use_point_crop}
 
 dataset:
   _target_: diffusion_policy_3d.dataset.isaaclab_dataset.IsaacLabDataset

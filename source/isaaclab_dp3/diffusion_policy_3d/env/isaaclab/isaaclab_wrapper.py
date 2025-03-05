@@ -8,7 +8,7 @@ from isaaclab.envs import DirectRLEnv, ManagerBasedRLEnv
 from isaaclab_tasks.utils.parse_cfg import parse_env_cfg
 
 
-class IsaacLabWrapper:
+class IsaacLabEnv:
     """Isaac Lab 환경을 위한 래퍼 클래스
     
     이 클래스는 Isaac Lab 환경을 감싸고 Diffusion Policy에서 사용할 수 있도록 인터페이스를 제공합니다.
