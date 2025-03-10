@@ -1,8 +1,7 @@
-import numpy as np
-import torch
-import zarr
-import os
 from typing import Dict
+import torch
+import numpy as np
+import copy
 
 from diffusion_policy_3d.common.pytorch_util import dict_apply
 from diffusion_policy_3d.common.replay_buffer import ReplayBuffer
@@ -38,7 +37,7 @@ class IsaacLabDataset(BaseDataset):
         super().__init__()
         self.task_name = task_name
         self.replay_buffer = ReplayBuffer.copy_from_path(
-            zarr_path, keys=['agent_pos', 'action', 'point_cloud'])
+            zarr_path, keys=['state', 'action', 'point_cloud'])
         
         val_mask = get_val_mask(
             n_episodes=self.replay_buffer.n_episodes, 
@@ -56,48 +55,36 @@ class IsaacLabDataset(BaseDataset):
             pad_before=pad_before, 
             pad_after=pad_after,
             episode_mask=train_mask)
-        
         self.train_mask = train_mask
-        self._normalizer = None
+        self.horizon = horizon
+        self.pad_before = pad_before
+        self.pad_after = pad_after
+
         print(f"IsaacLabDataset initialized with {len(self.sampler)} samples from {zarr_path}")
-        print(f"Training episodes: {np.sum(train_mask)}/{self.replay_buffer.n_episodes}")
 
     def get_validation_dataset(self):
-        """
-        검증 데이터셋을 반환합니다.
-        """
-        val_mask = ~self.train_mask
-        val_dataset = IsaacLabDataset(
-            zarr_path=self.replay_buffer.zarr_path,
-            horizon=self.sampler.sequence_length,
-            pad_before=self.sampler.pad_before,
-            pad_after=self.sampler.pad_after,
-            seed=42,
-            val_ratio=0.0,
-            task_name=self.task_name
-        )
-        # 검증 마스크 적용
-        val_dataset.sampler = SequenceSampler(
-            replay_buffer=self.replay_buffer,
-            sequence_length=self.sampler.sequence_length,
-            pad_before=self.sampler.pad_before,
-            pad_after=self.sampler.pad_after,
-            episode_mask=val_mask
-        )
-        val_dataset.train_mask = ~val_mask
-        val_dataset._normalizer = self._normalizer
-        return val_dataset
+        val_set = copy.copy(self)
+        val_set.sampler = SequenceSampler(
+            replay_buffer=self.replay_buffer, 
+            sequence_length=self.horizon,
+            pad_before=self.pad_before, 
+            pad_after=self.pad_after,
+            episode_mask=~self.train_mask
+            )
+        val_set.train_mask = ~self.train_mask
+        return val_set
     
     def get_normalizer(self, mode='limits', **kwargs):
         data = {
             'action': self.replay_buffer['action'],
-            'agent_pos': self.replay_buffer['agent_pos'],
+            'agent_pos': self.replay_buffer['state'][...,:],
             'point_cloud': self.replay_buffer['point_cloud'],
         }
         normalizer = LinearNormalizer()
         normalizer.fit(data=data, last_n_dims=1, mode=mode, **kwargs)
         # 필요한 경우 특정 필드를 정규화 제외할 수 있음
         # normalizer['point_cloud'] = SingleFieldLinearNormalizer.create_identity()
+        # normalizer['imagin_robot'] = SingleFieldLinearNormalizer.create_identity()
         return normalizer
     
     def __len__(self) -> int:
