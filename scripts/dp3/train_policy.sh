@@ -3,7 +3,7 @@
 # bash scripts/train_policy.sh dp3 dexart_laptop 0322 0 0
 # bash scripts/train_policy.sh simple_dp3 adroit_hammer 0322 0 0
 # bash scripts/train_policy.sh dp3 metaworld_basketball 0602 0 0
-# bash scripts/train_policy.sh dp3 isaac_lab_lift 0302 0 0
+# bash scripts/dp3/train_policy.sh dp3 Isaac-Lift-Cube-Franka-v0 0302 0 0
 
 DEBUG=False
 save_ckpt=True
@@ -14,7 +14,7 @@ config_name=${alg_name}
 addition_info=${3}
 seed=${4}
 exp_name=${task_name}-${alg_name}-${addition_info}
-run_dir="data/outputs/${exp_name}_seed${seed}"
+run_dir="/home/bak/Projects/AILab-IsaacLab/datasets/dp3_outputs/${exp_name}_seed${seed}"
 
 
 # gpu_id=$(bash scripts/find_gpu.sh)
@@ -33,11 +33,13 @@ else
     echo -e "\033[33mTrain mode\033[0m"
 fi
 
-cd 3D-Diffusion-Policy
+cd /home/bak/Projects/AILab-IsaacLab/source/isaaclab_dp3/
+# cd /home/bak/Projects/AILab-IsaacLab/
 
 # export ROOT_DIR=$(pwd)
 export HYDRA_FULL_ERROR=1 
 export CUDA_VISIBLE_DEVICES=${gpu_id}
+
 python train.py --config-name=${config_name}.yaml \
                             task=${task_name} \
                             hydra.run.dir=${run_dir} \
@@ -47,7 +49,4 @@ python train.py --config-name=${config_name}.yaml \
                             exp_name=${exp_name} \
                             logging.mode=${wandb_mode} \
                             checkpoint.save_ckpt=${save_ckpt}
-
-
-
                                 
