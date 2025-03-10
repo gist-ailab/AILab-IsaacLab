@@ -78,7 +78,7 @@ gym.register(
 )
 
 gym.register(
-    id="Isaac-Lift-Cube-Franka-IK-Rel-cam-v0",
+    id="Isaac-Lift-Cube-Franka-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     kwargs={
         "env_cfg_entry_point": f"{__name__}.cam_ik_rel_env_cfg:FrankaCubeLiftEnvCfg",
