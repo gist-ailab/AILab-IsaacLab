@@ -1,8 +1,9 @@
+import argparse
+
 from isaaclab.app import AppLauncher
 
 # launch omniverse app
-# app_launcher = AppLauncher(headless=True, enable_cameras=True, device="cuda:0")
-app_launcher = AppLauncher(headless=True, device="cuda:0")
+app_launcher = AppLauncher(headless=True, enable_cameras=True, device="cuda:0")
 simulation_app = app_launcher.app
 
 import os
