@@ -3,9 +3,10 @@ import numpy as np
 import torch
 import collections
 import tqdm
-from typing import Dict, Any, Optional
-
 from diffusion_policy_3d.env.isaaclab.isaaclab_wrapper import IsaacLabEnv
+from diffusion_policy_3d.gym_util.multistep_wrapper import MultiStepWrapper
+from diffusion_policy_3d.gym_util.video_recording_wrapper import SimpleVideoRecordingWrapper
+
 from diffusion_policy_3d.policy.base_policy import BasePolicy
 from diffusion_policy_3d.common.pytorch_util import dict_apply
 from diffusion_policy_3d.env_runner.base_runner import BaseRunner
@@ -14,17 +15,34 @@ from termcolor import cprint
 
 class IsaacLabRunner(BaseRunner):
     """Isaac Lab 환경에서 정책을 평가하기 위한 러너 클래스"""
-    
+    # def __init__(self,
+    #              output_dir,
+    #              eval_episodes=20,
+    #              max_steps=30,
+    #              n_obs_steps=8,
+    #              n_action_steps=8,
+    #              fps=10,
+    #              tqdm_interval_sec=5.0,
+    #              device="cuda:0",
+    #              task_name="lift"):
     def __init__(self,
                  output_dir,
                  eval_episodes=20,
-                 max_steps=30,
+                 max_steps=1000,
                  n_obs_steps=8,
                  n_action_steps=8,
                  fps=10,
+                 crf=22,
+                 render_size=84,
                  tqdm_interval_sec=5.0,
+                 n_envs=None,
+                 task_name=None,
+                 n_train=None,
+                 n_test=None,
                  device="cuda:0",
-                 task_name="lift"):
+                 use_point_crop=True,
+                 num_points=512
+                 ):
         """
         Args:
             output_dir: 출력 디렉토리 경로
@@ -40,17 +58,37 @@ class IsaacLabRunner(BaseRunner):
         super().__init__(output_dir)
         self.task_name = task_name
         
-        # 환경 설정
-        env_config = {
-            "task_name": task_name,
-            "num_envs": 1,  # 단일 환경 사용
-            "headless": True,  # 헤드리스 모드
-            "device": device,
-            "max_steps": max_steps
-        }
+
+        def env_fn(task_name):
+            return MultiStepWrapper(
+                SimpleVideoRecordingWrapper(
+                    IsaacLabEnv({
+                        "task_name": task_name,
+                        "num_envs": 1, 
+                        "headless": True,
+                        "device": device,
+                        "max_steps": max_steps
+                    })
+                ),
+                n_obs_steps=n_obs_steps,
+                n_action_steps=n_action_steps,
+                max_episode_steps=max_steps,
+                reward_agg_method='sum',
+            )
+        self.eval_episodes = eval_episodes
+        self.env = env_fn(self.task_name)
+
+        # # 환경 설정
+        # env_config = {
+        #     "task_name": task_name,
+        #     "num_envs": 1,  # 단일 환경 사용
+        #     "headless": True,  # 헤드리스 모드
+        #     "device": device,
+        #     "max_steps": max_steps
+        # }
         
-        # 환경 초기화
-        self.env = IsaacLabEnv(env_config)
+        # # 환경 초기화
+        # self.env = IsaacLabEnv(env_config)
         
         # 평가 설정
         self.eval_episodes = eval_episodes
@@ -81,12 +119,13 @@ class IsaacLabRunner(BaseRunner):
         all_success_rates = []
         env = self.env
         
-        # 여러 에피소드 실행
+        ##############################
+        # train env loop
         for episode_idx in tqdm.tqdm(range(self.eval_episodes), 
                                     desc=f"Isaac Lab {self.task_name} 환경에서 평가 중", 
                                     leave=False, 
                                     mininterval=self.tqdm_interval_sec):
-            # 환경 초기화
+            # start rollout
             obs = env.reset()
             policy.reset()
             
