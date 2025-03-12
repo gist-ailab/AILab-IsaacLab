@@ -1,5 +1,7 @@
-import gym
-from gym import spaces
+# import gym              # BSH DP3 원본 task에서 사용
+# from gym import spaces  # BSH DP3 원본 task에서 사용
+import gymnasium as gym
+from gymnasium import spaces
 import numpy as np
 import torch
 from collections import defaultdict, deque

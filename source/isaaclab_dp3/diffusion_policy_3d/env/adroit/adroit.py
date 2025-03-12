@@ -10,10 +10,12 @@ import warnings
 import dm_env
 import numpy as np
 import mj_envs
-import gym
+# import gym  # BSH DP3 원본 task에서 사용
+import gymnasium as gym
 from dm_env import StepType, specs
 from collections import OrderedDict
-from gym import spaces
+# from gym import spaces          # BSH DP3 원본 task에서 사용
+from gymnasium import spaces
 from mjrl.utils.gym_env import GymEnv
 from .rrl_local.rrl_multicam import BasicAdroitEnv, BasicFrankaEnv
 
