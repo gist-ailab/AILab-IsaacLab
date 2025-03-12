@@ -110,9 +110,52 @@ class ObservationsCfg:
         def __post_init__(self):
             self.enable_corruption = True
             self.concatenate_terms = True
+    
+    @configclass
+    class VisionRobotCfg(ObsGroup):
+        """Observations for DP3 group."""
+
+        rgb_image = ObsTerm(
+            func=mdp.image,
+            params={
+                "sensor_cfg": SceneEntityCfg("camera"),
+                "data_type": "rgb",
+                }
+        )
+
+        depth = ObsTerm(
+            func=mdp.image,
+            params={
+                "sensor_cfg": SceneEntityCfg("camera"),
+                "data_type": "depth",
+                }
+        )
+
+        point_cloud = ObsTerm(
+            func=mdp.point_cloud,
+            params={
+                "sensor_cfg": SceneEntityCfg("camera"),
+                "num_points": 1024,
+            }
+        )
+
+        end_effector_pose = ObsTerm(
+            func=mdp.end_effector_pose,
+            params={
+                "articulation_name": "robot",
+                "end_effector_name": "panda_hand",
+                "body_offset": mdp.DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.107]),
+                # body_offset for franka panda hand
+            }
+        )
+
+        concatenate_terms = False
 
     # observation groups
     policy: PolicyCfg = PolicyCfg()
+
+    # robot vision groups
+    vision_robot: VisionRobotCfg = VisionRobotCfg()
 
 
 @configclass
