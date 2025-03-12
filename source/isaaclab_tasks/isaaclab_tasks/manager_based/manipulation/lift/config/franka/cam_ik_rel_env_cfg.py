@@ -12,6 +12,7 @@ from isaaclab.sensors import CameraCfg
 from isaaclab.sensors.camera.utils import create_pointcloud_from_depth
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import ObservationTermCfg as ObsTerm
+from isaaclab.managers import ObservationGroupCfg as ObsGroup
 
 from . import joint_pos_env_cfg
 
@@ -77,39 +78,46 @@ class FrankaCubeLiftEnvCfg(joint_pos_env_cfg.FrankaCubeLiftEnvCfg):
             body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.107]),
         )
 
-        # Add camera observations to existing policy observations
-        self.observations.policy.rgb_image = ObsTerm(
-            func=mdp.image,
-            params={
-                "sensor_cfg": SceneEntityCfg("camera"),
-                "data_type": "rgb",
-                }
-        )
-        self.observations.policy.depth_image = ObsTerm(
-            func=mdp.image,
-            params={
-                "sensor_cfg": SceneEntityCfg("camera"),
-                "data_type": "depth",
-                }
-        )
+        '''아래꺼 주석처리한거 지워도 될듯'''
+        # # Add camera observations to existing policy observations
+        # self.observations.policy.rgb_image = ObsTerm(
+        #     func=mdp.image,
+        #     params={
+        #         "sensor_cfg": SceneEntityCfg("camera"),
+        #         "data_type": "rgb",
+        #         }
+        # )
+        # self.observations.policy.depth_image = ObsTerm(
+        #     func=mdp.image,
+        #     params={
+        #         "sensor_cfg": SceneEntityCfg("camera"),
+        #         "data_type": "depth",
+        #         }
+        # )
 
-        self.observations.policy.point_cloud = ObsTerm(
-            func=mdp.point_cloud,
-            params={
-                "sensor_cfg": SceneEntityCfg("camera"),
-                "num_points": 1024,
-            }
-        )
+        # self.observations.policy.point_cloud = ObsTerm(
+        #     func=mdp.point_cloud,
+        #     params={
+        #         "sensor_cfg": SceneEntityCfg("camera"),
+        #         "num_points": 1024,
+        #     }
+        # )
 
-        self.observations.policy.end_effector_pose = ObsTerm(
-            func=mdp.end_effector_pose,
-            params={
-                "articulation_name": "robot",
-                "end_effector_name": "panda_hand",
-                "body_offset": DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.107]),
-                # body_offset for franka panda hand
-            }
-        )
+        # self.observations.policy.end_effector_pose = ObsTerm(
+        #     func=mdp.end_effector_pose,
+        #     params={
+        #         "articulation_name": "robot",
+        #         "end_effector_name": "panda_hand",
+        #         "body_offset": DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.107]),
+        #         # body_offset for franka panda hand
+        #     }
+        # )
+
+        # 이게 True면 observation manager에서 오류 발생. 다른 차원의 observation을 concat 안하도록 해야 함.
+        self.observations.policy.concatenate_terms = False
+
+        # Set always enable cameras
+        self.sim.enable_cameras = True
 
 
 @configclass
