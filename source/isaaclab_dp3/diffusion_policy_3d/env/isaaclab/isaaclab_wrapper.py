@@ -29,9 +29,10 @@ class IsaacLabEnv(gym.Env):
         """
         # 환경 설정 저장
         self.env_config = env_config
-        self.device = env_config.get("device", "cuda:0")
-        self.headless = env_config.get("headless", True)
-        self.max_steps = env_config.get("max_steps", 1000)
+        self.device = env_config["device"]
+        self.headless = env_config["headless"]
+        self.max_steps = env_config["max_steps"]
+        self.render_mode = env_config["render_mode"]
         
         # 환경 설정 파싱
         task_name = env_config["task_name"]
@@ -55,7 +56,7 @@ class IsaacLabEnv(gym.Env):
         # env_cfg.scene.num_envs = 1
         
         # ManagerBasedRLEnv 환경 생성 (직접 인스턴스화)
-        self.env = ManagerBasedRLEnv(cfg=env_cfg)
+        self.env = ManagerBasedRLEnv(cfg=env_cfg, render_mode=self.render_mode)
         
         # 액션 및 관측 공간 가져오기
         self.action_space = self.env.action_space
@@ -63,18 +64,38 @@ class IsaacLabEnv(gym.Env):
         
         # Diffusion Policy에서 사용할 관측 공간 정의
         self.observation_space = gym.spaces.Dict({
-            # 정책용 관측 공간
-            'policy': gym.spaces.Box(
-                low=-np.inf, high=np.inf, 
-                shape=self.observation_space_raw['policy'].shape, 
+            'point_cloud': gym.spaces.Box(
+                low=-np.inf, high=np.inf,
+                shape=self.observation_space_raw['vision_robot']['point_cloud'].shape,
                 dtype=np.float32
             ),
-            # 에이전트 위치 정보
-            'agent_pos': gym.spaces.Box(
+            'rgb_image': gym.spaces.Box(
                 low=-np.inf, high=np.inf,
-                shape=self.observation_space_raw['policy'].shape,
+                shape=self.observation_space_raw['vision_robot']['rgb_image'].shape,
+                dtype=np.int32
+            ),
+            'end_effector_pose': gym.spaces.Box(
+                low=-np.inf, high=np.inf,
+                shape=self.observation_space_raw['vision_robot']['end_effector_pose'].shape,
                 dtype=np.float32
-            )
+            ),
+
+
+
+
+
+            # # 정책용 관측 공간
+            # 'policy': gym.spaces.Box(
+            #     low=-np.inf, high=np.inf, 
+            #     shape=self.observation_space_raw['policy'].shape, 
+            #     dtype=np.float32
+            # ),
+            # # 에이전트 위치 정보
+            # 'agent_pos': gym.spaces.Box(
+            #     low=-np.inf, high=np.inf,
+            #     shape=self.observation_space_raw['policy'].shape,
+            #     dtype=np.float32
+            # )
         })
         
         # 포인트 클라우드가 있는 경우 추가
@@ -89,7 +110,7 @@ class IsaacLabEnv(gym.Env):
         self.current_step = 0
         self.episode_reward = 0.0
         
-    def reset(self):
+    def reset(self, seed: int | None = None, options: dict[str, Any] | None = None):
         """환경을 초기화합니다."""
         self.current_step = 0
         self.episode_reward = 0.0
@@ -131,20 +152,13 @@ class IsaacLabEnv(gym.Env):
     def _convert_to_obs_dict(self, raw_obs):
         """원시 관측을 Diffusion Policy 형식으로 변환합니다."""
         # 기본 관측 딕셔너리 생성
+        # TODO: https://www.notion.so/memo-1b1b6fccbb0580099663e1171fc336ce?pvs=4#1b3b6fccbb05802c9b4ff5335c4f859a
+        # TODO: adroit, dexart, metaworld 래퍼들과 동일한 관측 딕셔너리 형식 사용. 아래 부분을 수정해서 틀을 맞추도록 하자.
         obs_dict = {
-            'policy': raw_obs['policy'],
-            'agent_pos': raw_obs['policy']  # 기본적으로 policy를 agent_pos로도 사용
+            'point_cloud': raw_obs['vision_robot']['point_cloud'],
+            'rgb_image': raw_obs['vision_robot']['rgb_image'],
+            'agent_pos': raw_obs['vision_robot']['end_effector_pose']
         }
-        
-        # 추가 관측 키가 있으면 처리
-        if 'point_cloud' in raw_obs:
-            obs_dict['point_cloud'] = raw_obs['point_cloud']
-        
-        if 'rgb' in raw_obs:
-            obs_dict['image'] = raw_obs['rgb']
-        
-        if 'depth' in raw_obs:
-            obs_dict['depth'] = raw_obs['depth']
                 
         return obs_dict
         
@@ -164,7 +178,8 @@ class IsaacLabEnv(gym.Env):
         '''
         if mode == 'rgb_array':
             if hasattr(self.env, 'render'):
-                return self.env.render(mode='rgb_array')
+                # return self.env.render(mode='rgb_array')
+                return self.env.render()
             else:
                 # 렌더링이 지원되지 않는 경우 빈 프레임 반환
                 return np.zeros((3, 84, 84), dtype=np.uint8)
