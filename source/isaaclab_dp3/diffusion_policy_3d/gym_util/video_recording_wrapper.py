@@ -1,7 +1,12 @@
-import gym
+# import gym    # BSH DP3 원본 task에서 사용
+import gymnasium as gym
+from gymnasium import spaces
+from typing import Any, TypeVar
 import numpy as np
 from termcolor import cprint
 
+WrapperObsType = TypeVar("WrapperObsType")
+WrapperActType = TypeVar("WrapperActType")
 
 class SimpleVideoRecordingWrapper(gym.Wrapper):
     def __init__(self, 
@@ -12,8 +17,14 @@ class SimpleVideoRecordingWrapper(gym.Wrapper):
         """
         When file_path is None, don't record.
         """
-        super().__init__(env)
+        # super().__init__(env)   # TODO: 디버깅 모드로 안에 들어가서 env 타입이 어떤건지 더 확인해보자.
         
+        self.env = env
+        self._action_space: spaces.Space[WrapperActType] | None = None
+        self._observation_space: spaces.Space[WrapperObsType] | None = None
+        self._metadata: dict[str, Any] | None = None
+        self._reward_range = None
+
         self.mode = mode
         self.steps_per_render = steps_per_render
 
