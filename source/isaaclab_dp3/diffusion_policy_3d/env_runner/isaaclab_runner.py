@@ -64,10 +64,11 @@ class IsaacLabRunner(BaseRunner):
                 SimpleVideoRecordingWrapper(
                     IsaacLabEnv({
                         "task_name": task_name,
-                        "num_envs": 1, 
+                        "num_envs": 1,
                         "headless": True,
                         "device": device,
-                        "max_steps": max_steps
+                        "max_steps": max_steps,
+                        "render_mode": "rgb_array",
                     })
                 ),
                 n_obs_steps=n_obs_steps,
