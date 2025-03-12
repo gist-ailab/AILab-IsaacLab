@@ -180,7 +180,8 @@ class MujocoPointcloudWrapperAdroit(gym.Wrapper):
         obs_dict['depth'] = depth
         return obs_dict, reward, done, info
 
-    def reset(self):
+    def reset(self,
+              **kwargs):    # BSH: add kwargs to match the reset function of the original env
         obs_dict = self.env.reset()
         point_cloud, depth = self.get_point_cloud()
         obs_dict['point_cloud'] = point_cloud
