@@ -48,18 +48,17 @@ class IsaacLabEnv(gym.Env):
             if key not in ["task_name"]:
                 setattr(env_cfg, key, value)
         
-        # # 렌더링 모드 설정
-        # render_mode = "rgb_array" if self.headless else "human"
-
-        # # create environment configuration
-        # env_cfg = FrankaCubeLiftEnvCfg()
-        # env_cfg.scene.num_envs = 1
-        
         # ManagerBasedRLEnv 환경 생성 (직접 인스턴스화)
         self.env = ManagerBasedRLEnv(cfg=env_cfg, render_mode=self.render_mode)
         
         # 액션 및 관측 공간 가져오기
-        self.action_space = self.env.action_space
+        # self.action_space = self.env.action_space
+        self.action_space = gym.spaces.Box(
+                low=self.env.action_space.low[0],
+                high=self.env.action_space.high[0],
+                shape=(self.env.action_space.shape[1],),
+                dtype=self.env.action_space.dtype
+        )
         self.observation_space_raw = self.env.observation_space
         
         # Diffusion Policy에서 사용할 관측 공간 정의
@@ -74,38 +73,13 @@ class IsaacLabEnv(gym.Env):
                 shape=self.observation_space_raw['vision_robot']['rgb_image'].shape,
                 dtype=np.int32
             ),
-            'end_effector_pose': gym.spaces.Box(
+            'agent_pos': gym.spaces.Box(
                 low=-np.inf, high=np.inf,
-                shape=self.observation_space_raw['vision_robot']['end_effector_pose'].shape,
+                shape=self.observation_space_raw['vision_robot']['agent_pos'].shape,
                 dtype=np.float32
             ),
-
-
-
-
-
-            # # 정책용 관측 공간
-            # 'policy': gym.spaces.Box(
-            #     low=-np.inf, high=np.inf, 
-            #     shape=self.observation_space_raw['policy'].shape, 
-            #     dtype=np.float32
-            # ),
-            # # 에이전트 위치 정보
-            # 'agent_pos': gym.spaces.Box(
-            #     low=-np.inf, high=np.inf,
-            #     shape=self.observation_space_raw['policy'].shape,
-            #     dtype=np.float32
-            # )
         })
-        
-        # 포인트 클라우드가 있는 경우 추가
-        if 'point_cloud' in self.observation_space_raw:
-            self.observation_space['point_cloud'] = self.observation_space_raw['point_cloud']
-        
-        # 이미지가 있는 경우 추가
-        if 'rgb' in self.observation_space_raw:
-            self.observation_space['image'] = self.observation_space_raw['rgb']
-        
+
         # 카운터 및 에피소드 정보 초기화
         self.current_step = 0
         self.episode_reward = 0.0
@@ -119,7 +93,7 @@ class IsaacLabEnv(gym.Env):
         obs, info = self.env.reset()
         
         # Diffusion Policy 형식으로 변환된 관측 반환
-        return self._convert_to_obs_dict(obs), info
+        return self._convert_to_obs_dict(obs)
         
     def step(self, action):
         """액션을 수행하고 결과를 반환합니다.
@@ -132,11 +106,11 @@ class IsaacLabEnv(gym.Env):
                 - obs_dict: 관측 딕셔너리
                 - reward: 보상
                 - terminated: 에피소드 종료 여부 (실패 또는 성공)
-                - truncated: 에피소드 중단 여부 (시간 제한)
+                - time_out: 에피소드 중단 여부 (시간 제한)
                 - info: 추가 정보
         """
         # ManagerBasedRLEnv의 step 메소드는 (obs, reward, terminated, truncated, info)를 반환
-        obs, reward, terminated, truncated, info = self.env.step(action)
+        obs, reward, terminated, time_out, info = self.env.step(action)
         
         # 스텝 카운터 증가 및 누적 보상 업데이트
         self.current_step += 1
@@ -144,20 +118,23 @@ class IsaacLabEnv(gym.Env):
         
         # 최대 스텝 수에 도달하면 종료
         if self.current_step >= self.max_steps:
-            truncated = True
+            time_out = True
         
         # Diffusion Policy 형식으로 변환된 관측 반환
-        return self._convert_to_obs_dict(obs), reward, terminated, truncated, info
+        '''
+        DP3 코드에서 모든 환경이 공동으로 쓰는 multistep_wrapper.py의 MultiStepWrapper 클래스의 step 메서드에서는
+        observation, reward, done, info = super().step(act) 로 act에 대한 출력을 하기 때문에 4개만 출력한다.
+        '''
+        # 차원 맞추는 것 때문에 num_env=3으로 했으나, observation 값들로 첫 차원만 가져와서 terminated[0] 사용
+        return self._convert_to_obs_dict(obs), reward, terminated[0], info
         
     def _convert_to_obs_dict(self, raw_obs):
         """원시 관측을 Diffusion Policy 형식으로 변환합니다."""
         # 기본 관측 딕셔너리 생성
-        # TODO: https://www.notion.so/memo-1b1b6fccbb0580099663e1171fc336ce?pvs=4#1b3b6fccbb05802c9b4ff5335c4f859a
-        # TODO: adroit, dexart, metaworld 래퍼들과 동일한 관측 딕셔너리 형식 사용. 아래 부분을 수정해서 틀을 맞추도록 하자.
         obs_dict = {
             'point_cloud': raw_obs['vision_robot']['point_cloud'],
             'rgb_image': raw_obs['vision_robot']['rgb_image'],
-            'agent_pos': raw_obs['vision_robot']['end_effector_pose']
+            'agent_pos': raw_obs['vision_robot']['agent_pos'],
         }
                 
         return obs_dict
