@@ -77,7 +77,7 @@ class IsaacLabDataset(BaseDataset):
     def get_normalizer(self, mode='limits', **kwargs):
         data = {
             'action': self.replay_buffer['action'],
-            'agent_pos': self.replay_buffer['state'][...,:],
+            'agent_pos': self.replay_buffer['state'],
             'point_cloud': self.replay_buffer['point_cloud'],
         }
         normalizer = LinearNormalizer()
