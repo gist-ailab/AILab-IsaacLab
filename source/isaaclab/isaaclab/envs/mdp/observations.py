@@ -442,8 +442,9 @@ def point_cloud(
     # Concatenate sampled point cloud and RGB
     sampled_data = torch.cat([sampled_pcd, sampled_rgb], dim=1)
 
-    # shape: (num_points, 3)을 (1, num_points, 3)으로 확장. batch dimension 추가
-    return sampled_data.unsqueeze(0)
+    # # shape: (num_points, 3)을 (1, num_points, 3)으로 확장. batch dimension 추가
+    # return sampled_data.unsqueeze(0)
+    return sampled_data
 
 
 # 격자기반 point cloud sampling
@@ -776,7 +777,7 @@ def end_effector_pose(
     """
     # Get the robot articulation
     articulation: Articulation = env.scene.articulations[articulation_name]
-    
+
     # Get the body ID for the end-effector
     body_ids, _ = articulation.find_bodies(end_effector_name)
     if len(body_ids) == 0:
@@ -803,6 +804,36 @@ def end_effector_pose(
         )
     
     # Combine position and orientation into a single pose tensor (7D)
-    ee_pose = torch.cat([ee_pose_b.unsqueeze(0), ee_quat_b.unsqueeze(0)], dim=2)
+    ee_pose = torch.cat([ee_pose_b[0], ee_quat_b[0]])
     
-    return ee_pose  # Shape: (1, num_envs, 7)
+    return ee_pose  # Shape: (1, num_envs, 7), 맨 앞은 batch dimension
+
+
+def ee_pose_and_joint_pos(
+        env: ManagerBasedEnv,
+        articulation_name: str = "robot",
+        end_effector_name: str = "panda_hand",  # 로봇 모델의 end-effector 링크 이름
+        body_offset=None  # offset 추가 가능
+    ) -> torch.Tensor:
+    """Gets the end-effector pose (position and orientation) and joint positions.
+
+    Args:
+        env: The environment.
+        articulation_name: The name of the articulation. Defaults to "robot".
+        end_effector_name: The name of the end-effector link. Defaults to "panda_hand".
+        body_offset: Optional offset to apply to the body pose.
+
+    Returns:
+        A tensor of shape (1, 7) representing position (3) and quaternion (4).
+    """
+
+    # # Get the robot articulation
+    # articulation: Articulation = env.scene.articulations[articulation_name]
+    # gripper_joint_pos = articulation.data.joint_pos[:, -2:]  # 마지막 2개의 joint만 사용 (gripper joint).
+    gripper_joint_pose = joint_pos(env, asset_cfg=SceneEntityCfg(articulation_name))[:, -2:] # 위에 주석처리 한 줄과 동일한 결과
+    gripper_joint_pose = gripper_joint_pose[0]   # ee_pose와 차원을 맞추기 위해 squeeze
+    ee_pose = end_effector_pose(env, articulation_name, end_effector_name, body_offset)
+
+    ee_pose_and_joint_pos = torch.cat([ee_pose, gripper_joint_pose])
+    
+    return ee_pose_and_joint_pos
