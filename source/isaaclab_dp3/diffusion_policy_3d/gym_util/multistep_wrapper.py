@@ -145,13 +145,29 @@ class MultiStepWrapper(gym.Wrapper):
                 # termination
                 break
             observation, reward, done, info = super().step(act)
+            '''
+            MEMO:
+            manager_based_rl_env.py의 def step에서는 아래 5개를 반환
+            self.obs_buf, self.reward_buf, self.reset_terminated, self.reset_time_outs, self.extras
+            
+            isaaclab_wrapper.py의 def step에서는 아래 5개를 반환
+            self._convert_to_obs_dict(obs), reward, terminated, truncated, info
+
+            MultiStepWrapper는 SimpleVideoRecordingWrapper를 감싸고,
+            그건 isaaclab_wrapper.py의 IsaacLabEnv를 감싸고 있음.
+            그리고 IsaacLabEnv는 ManagerBasedRLEnv를 사용함.
+            따라서 내가 만든 isaaclab_wrapper.py의 IsaacLabEnv를 수정해야 함.
+            '''
 
             self.obs.append(observation)
             self.reward.append(reward)
             if (self.max_episode_steps is not None) \
                 and (len(self.reward) >= self.max_episode_steps):
                 # truncation
-                done = True
+                if type(done) != torch.Tensor:
+                    done = True
+                else:
+                    done = torch.tensor(True).to(done.device)
             self.done.append(done)
             self._add_info(info)
 
