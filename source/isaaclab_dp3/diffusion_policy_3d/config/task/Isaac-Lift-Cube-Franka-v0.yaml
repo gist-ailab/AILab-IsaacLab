@@ -1,6 +1,5 @@
 name: isaaclab_lift
 
-# task_name: lift
 task_name: Isaac-Lift-Cube-Franka-v0
 
 shape_meta: &shape_meta
@@ -13,7 +12,7 @@ shape_meta: &shape_meta
     #   shape: [96, 7]
     #   type: point_cloud
     agent_pos:
-      shape: [9]
+      shape: [9]  # [x, y, z, qw, qx, qy, qz] + ee_joint_pos(2)
       type: low_dim
   action:
     shape: [7]
@@ -27,7 +26,6 @@ env_runner:
   n_obs_steps: ${n_obs_steps}
   n_action_steps: ${n_action_steps}
   fps: 10
-  # task_name: lift
   task_name: Isaac-Lift-Cube-Franka-v0
   device: ${training.device}
   # use_point_crop: ${policy.use_point_crop}
