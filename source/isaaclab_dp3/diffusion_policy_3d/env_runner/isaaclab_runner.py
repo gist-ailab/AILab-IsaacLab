@@ -15,16 +15,6 @@ from termcolor import cprint
 
 class IsaacLabRunner(BaseRunner):
     """Isaac Lab 환경에서 정책을 평가하기 위한 러너 클래스"""
-    # def __init__(self,
-    #              output_dir,
-    #              eval_episodes=20,
-    #              max_steps=30,
-    #              n_obs_steps=8,
-    #              n_action_steps=8,
-    #              fps=10,
-    #              tqdm_interval_sec=5.0,
-    #              device="cuda:0",
-    #              task_name="lift"):
     def __init__(self,
                  output_dir,
                  eval_episodes=20,
@@ -64,7 +54,7 @@ class IsaacLabRunner(BaseRunner):
                 SimpleVideoRecordingWrapper(
                     IsaacLabEnv({
                         "task_name": task_name,
-                        "num_envs": 1,
+                        "num_envs": 3,
                         "headless": True,
                         "device": device,
                         "max_steps": max_steps,
@@ -78,18 +68,6 @@ class IsaacLabRunner(BaseRunner):
             )
         self.eval_episodes = eval_episodes
         self.env = env_fn(self.task_name)
-
-        # # 환경 설정
-        # env_config = {
-        #     "task_name": task_name,
-        #     "num_envs": 1,  # 단일 환경 사용
-        #     "headless": True,  # 헤드리스 모드
-        #     "device": device,
-        #     "max_steps": max_steps
-        # }
-        
-        # # 환경 초기화
-        # self.env = IsaacLabEnv(env_config)
         
         # 평가 설정
         self.eval_episodes = eval_episodes
@@ -116,8 +94,8 @@ class IsaacLabRunner(BaseRunner):
         device = policy.device
         dtype = policy.dtype
         
-        all_rewards = []
-        all_success_rates = []
+        all_rewards = torch.zeros(self.eval_episodes, device=device, dtype=dtype)
+        all_success_rates = torch.zeros(self.eval_episodes, device=device, dtype=torch.bool)
         env = self.env
         
         ##############################
@@ -146,16 +124,16 @@ class IsaacLabRunner(BaseRunner):
                     obs_dict_input = {}
                     if 'point_cloud' in obs_dict:
                         obs_dict_input['point_cloud'] = obs_dict['point_cloud'].unsqueeze(0)
+                    # if 'end_effector_pose' in obs_dict:
+                    #     obs_dict_input['end_effector_pose'] = obs_dict['end_effector_pose'].unsqueeze(0)
                     if 'agent_pos' in obs_dict:
                         obs_dict_input['agent_pos'] = obs_dict['agent_pos'].unsqueeze(0)
+                        # obs_dict_input['agent_pos'] = obs_dict['agent_pos']
                     # 정책으로 액션 예측
                     action_dict = policy.predict_action(obs_dict_input)
                 
-                # 액션을 numpy 배열로 변환
-                np_action_dict = dict_apply(action_dict,
-                                          lambda x: x.detach().cpu().numpy())
-                action = np_action_dict['action'].squeeze(0)
-                
+                action = action_dict['action']
+
                 # 환경에 액션 적용
                 obs, reward, done, info = env.step(action)
                 
@@ -167,13 +145,13 @@ class IsaacLabRunner(BaseRunner):
                     success = False
             
             # 에피소드 결과 기록
-            all_rewards.append(total_reward)
-            all_success_rates.append(success)
+            all_rewards[episode_idx] = torch.tensor(total_reward, device=device, dtype=dtype)
+            all_success_rates[episode_idx] = torch.tensor(success, device=device, dtype=torch.bool)
         
         # 평가 결과 정리
         log_data = {}
-        mean_reward = np.mean(all_rewards)
-        mean_success_rate = np.mean(all_success_rates)
+        mean_reward = torch.mean(all_rewards)
+        mean_success_rate = torch.mean(all_success_rates.float()).item()
         
         log_data['mean_reward'] = mean_reward
         log_data['mean_success_rate'] = mean_success_rate
