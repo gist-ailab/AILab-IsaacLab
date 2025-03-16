@@ -139,8 +139,8 @@ class ObservationsCfg:
             }
         )
 
-        end_effector_pose = ObsTerm(
-            func=mdp.end_effector_pose,
+        agent_pos = ObsTerm(
+            func=mdp.ee_pose_and_joint_pos,
             params={
                 "articulation_name": "robot",
                 "end_effector_name": "panda_hand",
