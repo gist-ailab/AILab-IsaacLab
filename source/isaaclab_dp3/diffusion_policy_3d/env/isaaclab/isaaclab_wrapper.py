@@ -68,11 +68,12 @@ class IsaacLabEnv(gym.Env):
                 shape=self.observation_space_raw['vision_robot']['point_cloud'].shape,
                 dtype=np.float32
             ),
-            'rgb_image': gym.spaces.Box(
-                low=-np.inf, high=np.inf,
-                shape=self.observation_space_raw['vision_robot']['rgb_image'].shape,
-                dtype=np.int32
-            ),
+            # # rgb_image는 안 써서 주석처리
+            # 'rgb_image': gym.spaces.Box(
+            #     low=-np.inf, high=np.inf,
+            #     shape=self.observation_space_raw['vision_robot']['rgb_image'].shape,
+            #     dtype=np.int32
+            # ),
             'agent_pos': gym.spaces.Box(
                 low=-np.inf, high=np.inf,
                 shape=self.observation_space_raw['vision_robot']['agent_pos'].shape,
