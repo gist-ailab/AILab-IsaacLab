@@ -3,7 +3,8 @@ import argparse
 from isaaclab.app import AppLauncher
 
 # launch omniverse app
-app_launcher = AppLauncher(headless=True, enable_cameras=True, device="cuda:0")
+# app_launcher = AppLauncher(headless=True, enable_cameras=True, device="cuda:0")
+app_launcher = AppLauncher(enable_cameras=True, device="cuda:0")
 simulation_app = app_launcher.app
 
 import os
@@ -136,7 +137,6 @@ class TrainDP3Workspace:
         env_runner = hydra.utils.instantiate(
             cfg.task.env_runner,
             output_dir=self.output_dir)
-
         if env_runner is not None:
             assert isinstance(env_runner, BaseRunner)
         
@@ -259,8 +259,6 @@ class TrainDP3Workspace:
                 # log all
                 step_log.update(runner_log)
 
-            
-                
             # run validation
             if (self.epoch % cfg.training.val_every) == 0 and RUN_VALIDATION:
                 with torch.no_grad():
@@ -332,6 +330,13 @@ class TrainDP3Workspace:
             self.epoch += 1
             del step_log
 
+            # quit Isaac Lab if max epoch reached
+            if local_epoch_idx == (cfg.training.num_epochs-1):
+                env_runner.env.env.env.close()
+                env_runner.env.env.close()
+                env_runner.env.close()
+                simulation_app.close()
+
     def eval(self):
         # load the latest checkpoint
         
@@ -361,6 +366,13 @@ class TrainDP3Workspace:
         for key, value in runner_log.items():
             if isinstance(value, float):
                 cprint(f"{key}: {value:.4f}", 'magenta')
+        
+        env_runner.env.env.env.close()
+        env_runner.env.env.close()
+        env_runner.env.close()
+        # env_runner.env.env.close()
+        simulation_app.close()
+                
         
     @property
     def output_dir(self):
