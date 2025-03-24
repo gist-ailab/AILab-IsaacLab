@@ -102,7 +102,6 @@ class IsaacLabRunner(BaseRunner):
             device=device
         )
 
-        all_rewards = torch.zeros(self.eval_episodes, device=device, dtype=dtype)
         all_success_rates = torch.zeros(self.eval_episodes, device=device, dtype=torch.bool)
         env = self.env
         
@@ -118,42 +117,23 @@ class IsaacLabRunner(BaseRunner):
             policy_adapter.reset()
             
             done = False
-            total_reward = 0
             episode_step = 0
             
             # 에피소드 실행
             while not done and episode_step < self.max_steps:
                 # 어댑터를 통해 n_action_steps만큼 환경 진행
-                obs, reward, done, info = policy_adapter.step(env, obs)
+                # done은 task성공 여부를 의미함.
+                obs, done = policy_adapter.step(env, obs)
                 
-                total_reward += reward
                 episode_step += policy_adapter.n_action_steps
-                
-                # # 디버깅 출력
-                # if episode_step % 50 == 0:
-                #     print(f"Episode {episode_idx}, Step {episode_step}, Reward: {reward}, Done: {done}")
-                
-                # 성공 여부 확인
-                if 'success' in info:
-                    success = info['success']
-                else:
-                    success = False
-                    
-                # 최대 스텝 수 체크
-                if episode_step >= self.max_steps:
-                    # print(f"Episode {episode_idx} reached max steps limit.")
-                    done = True
             
             # 에피소드 결과 기록
-            all_rewards[episode_idx] = total_reward.clone().detach().to(device=device, dtype=dtype)
-            all_success_rates[episode_idx] = torch.tensor(success, device=device, dtype=torch.bool)
+            all_success_rates[episode_idx] = torch.tensor(done, device=device, dtype=torch.bool)
         
         # 평가 결과 정리
         log_data = {}
-        mean_reward = torch.mean(all_rewards)
         mean_success_rate = torch.mean(all_success_rates.float()).item()
         
-        log_data['mean_reward'] = mean_reward
         log_data['mean_success_rate'] = mean_success_rate
         log_data['test_mean_score'] = mean_success_rate
         

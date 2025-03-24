@@ -81,14 +81,12 @@ class IsaacLabEnv(gym.Env):
             ),
         })
 
-        # 카운터 및 에피소드 정보 초기화
+        # 카운터 정보 초기화
         self.current_step = 0
-        self.episode_reward = 0.0
         
     def reset(self, seed: int | None = None, options: dict[str, Any] | None = None):
         """환경을 초기화합니다."""
         self.current_step = 0
-        self.episode_reward = 0.0
         
         # ManagerBasedRLEnv의 reset 메소드는 (obs, info)를 반환
         obs, info = self.env.reset()
@@ -115,26 +113,17 @@ class IsaacLabEnv(gym.Env):
         
         # 스텝 카운터 증가 및 누적 보상 업데이트
         self.current_step += 1
-        self.episode_reward += reward
         
-        # 최대 스텝 수에 도달하면 종료
-        if self.current_step >= self.max_steps:
-            time_out = True
-        
-        # Diffusion Policy 형식으로 변환된 관측 반환
-        '''
-        DP3 코드에서 모든 환경이 공동으로 쓰는 multistep_wrapper.py의 MultiStepWrapper 클래스의 step 메서드에서는
-        observation, reward, done, info = super().step(act) 로 act에 대한 출력을 하기 때문에 4개만 출력한다.
-        '''
-        # 차원 맞추는 것 때문에 num_env=3으로 했으나, observation 값들로 첫 차원만 가져와서 terminated[0] 사용
-        return self._convert_to_obs_dict(obs), reward, terminated[0], info
+        # observation과 성공 여부(terminated)를 반환.
+        # terminated는 tensor([False], device='cuda:0') 형태라 1번째 요소만 반환
+        return self._convert_to_obs_dict(obs), terminated[0]
         
     def _convert_to_obs_dict(self, raw_obs):
         """원시 관측을 Diffusion Policy 형식으로 변환합니다."""
         # 기본 관측 딕셔너리 생성
         obs_dict = {
             'point_cloud': raw_obs['vision_robot']['point_cloud'],
-            'rgb_image': raw_obs['vision_robot']['rgb_image'].squeeze(),    # 차원 맞추기 위해 squeeze
+            # 'rgb_image': raw_obs['vision_robot']['rgb_image'].squeeze(),    # 차원 맞추기 위해 squeeze, 안 써서 주석처리
             'agent_pos': raw_obs['vision_robot']['agent_pos'],
         }
                 

@@ -46,7 +46,6 @@ class DP3IsaacLabAdapter:
         self.obs_buffer = {}
         
         # 에피소드 진행 중 수집된 데이터
-        self.reward_buffer = []
         self.done_buffer = []
         self.info_buffer = defaultdict(list)
         
@@ -131,21 +130,16 @@ class DP3IsaacLabAdapter:
             obs_dict: 현재 observation
             
         Returns:
-            tuple: (next_obs, reward, done, info)
+            tuple: (next_obs, done, info)
                 - next_obs: 다음 observation
-                - reward: 누적 보상
-                - done: 종료 여부
-                - info: 추가 정보
+                - done: 성공에 따른 종료 여부
+                - time_out: 시간제한 넘김 여부
         """
         # 버퍼 초기화
         for key in obs_dict.keys():
             self.obs_buffer[key] = None
-        self.reward_buffer = []
         self.done_buffer = []
         self.info_buffer = defaultdict(list)
-        
-        # # 현재 observation을 버퍼에 추가
-        # obs_dict = dict(obs)
         
         # DP3 모델에서 action 시퀀스 예측
         with torch.no_grad():
@@ -167,17 +161,10 @@ class DP3IsaacLabAdapter:
             current_action = act.reshape(1, -1)
             
             # 환경에 action 적용. Isaac Lab의 manager_based_rl_env.py의 step 메소드 사용
-            next_obs, reward, done, info = env.step(current_action)
-            
-            # 결과 저장
-            self.reward_buffer.append(reward)
-            
+            next_obs, done = env.step(current_action)
+
             # done 처리
             done = done.item()
-                
-            # 최대 에피소드 길이 체크 (truncation)
-            if (self.max_episode_steps is not None) and (self.step_count >= self.max_episode_steps):
-                done = True
             
             self.done_buffer.append(done)
             
@@ -191,26 +178,14 @@ class DP3IsaacLabAdapter:
             # 스텝 카운터 증가
             self.step_count += 1
         
-        # 결과 집계
-        # 보상 집계 (sum)
-        if len(self.reward_buffer) > 0:
-            total_reward = torch.sum(torch.stack(self.reward_buffer)) if isinstance(self.reward_buffer[0], torch.Tensor) else sum(self.reward_buffer)
-        else:
-            total_reward = 0
-            
+        # 결과 집계            
         # 종료 여부 (하나라도 True면 True)
         done = any(self.done_buffer) if self.done_buffer else False
         
-        # info 처리
-        info = {}
-        for key, values in self.info_buffer.items():
-            if len(values) > 0:
-                info[key] = values[-1]
-        
-        # # 최종 observation 반환
+        # 최종 observation 반환
         final_obs = self.obs_buffer.copy()
         
-        return final_obs, total_reward, done, info
+        return final_obs, done
 
 
     def _get_obs(self, n_obs_steps):
