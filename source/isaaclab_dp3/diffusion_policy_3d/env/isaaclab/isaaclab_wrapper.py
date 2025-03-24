@@ -133,7 +133,7 @@ class IsaacLabEnv(gym.Env):
         # 기본 관측 딕셔너리 생성
         obs_dict = {
             'point_cloud': raw_obs['vision_robot']['point_cloud'],
-            'rgb_image': raw_obs['vision_robot']['rgb_image'],
+            'rgb_image': raw_obs['vision_robot']['rgb_image'].squeeze(),    # 차원 맞추기 위해 squeeze
             'agent_pos': raw_obs['vision_robot']['agent_pos'],
         }
                 

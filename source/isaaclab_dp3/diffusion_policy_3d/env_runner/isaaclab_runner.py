@@ -13,14 +13,17 @@ from diffusion_policy_3d.env_runner.base_runner import BaseRunner
 import diffusion_policy_3d.common.logger_util as logger_util
 from termcolor import cprint
 
+# 어댑터 클래스 임포트
+from diffusion_policy_3d.env_runner.dp3_isaaclab_adapter import DP3IsaacLabAdapter
+
 class IsaacLabRunner(BaseRunner):
     """Isaac Lab 환경에서 정책을 평가하기 위한 러너 클래스"""
     def __init__(self,
                  output_dir,
                  eval_episodes=20,
                  max_steps=1000,
-                 n_obs_steps=8,
-                 n_action_steps=8,
+                 n_obs_steps=2,
+                 n_action_steps=3,
                  fps=10,
                  crf=22,
                  render_size=84,
@@ -47,25 +50,20 @@ class IsaacLabRunner(BaseRunner):
         """
         super().__init__(output_dir)
         self.task_name = task_name
-        
-
+           
+        # 환경 생성 함수 (MultiStepWrapper 제거)
         def env_fn(task_name):
-            return MultiStepWrapper(
-                SimpleVideoRecordingWrapper(
-                    IsaacLabEnv({
-                        "task_name": task_name,
-                        "num_envs": 3,
-                        "headless": True,
-                        "device": device,
-                        "max_steps": max_steps,
-                        "render_mode": "rgb_array",
-                    })
-                ),
-                n_obs_steps=n_obs_steps,
-                n_action_steps=n_action_steps,
-                max_episode_steps=max_steps,
-                reward_agg_method='sum',
+            return SimpleVideoRecordingWrapper(
+                IsaacLabEnv({
+                    "task_name": task_name,
+                    "num_envs": 1,  # 단일 환경 사용
+                    "headless": True,
+                    "device": device,
+                    "max_steps": max_steps,
+                    "render_mode": "rgb_array",
+                })
             )
+
         self.eval_episodes = eval_episodes
         self.env = env_fn(self.task_name)
         
@@ -76,6 +74,7 @@ class IsaacLabRunner(BaseRunner):
         self.n_action_steps = n_action_steps
         self.max_steps = max_steps
         self.tqdm_interval_sec = tqdm_interval_sec
+        self.device = device
         
         # 로거 설정
         self.logger_util = logger_util.LargestKRecorder(K=3)
@@ -94,58 +93,59 @@ class IsaacLabRunner(BaseRunner):
         device = policy.device
         dtype = policy.dtype
         
+        # 어댑터로 정책 래핑
+        policy_adapter = DP3IsaacLabAdapter(
+            policy, 
+            n_obs_steps=self.n_obs_steps,
+            n_action_steps=self.n_action_steps,
+            max_episode_steps=self.max_steps,
+            device=device
+        )
+
         all_rewards = torch.zeros(self.eval_episodes, device=device, dtype=dtype)
         all_success_rates = torch.zeros(self.eval_episodes, device=device, dtype=torch.bool)
         env = self.env
         
         ##############################
-        # train env loop
-        for episode_idx in tqdm.tqdm(range(self.eval_episodes), 
-                                    desc=f"Isaac Lab {self.task_name} 환경에서 평가 중", 
-                                    leave=False, 
-                                    mininterval=self.tqdm_interval_sec):
+        # env loop
+        for episode_idx in tqdm.tqdm(range(self.eval_episodes),
+                                     desc=f"Isaac Lab {self.task_name} 환경에서 평가 중",
+                                     leave=False,
+                                     mininterval=self.tqdm_interval_sec):
             # start rollout
             obs = env.reset()
-            policy.reset()
+            # policy.reset()    # policy_adapter.reset()으로 변경
+            policy_adapter.reset()
             
             done = False
             total_reward = 0
+            episode_step = 0
             
             # 에피소드 실행
-            while not done:
-                # 관측값을 정책 입력 형식으로 변환
-                np_obs_dict = dict(obs)
-                obs_dict = dict_apply(np_obs_dict,
-                                     lambda x: torch.from_numpy(x).to(device=device) 
-                                     if isinstance(x, np.ndarray) else x)
-                
-                # 배치 차원 추가
-                with torch.no_grad():
-                    obs_dict_input = {}
-                    if 'point_cloud' in obs_dict:
-                        obs_dict_input['point_cloud'] = obs_dict['point_cloud'].unsqueeze(0)
-                    # if 'end_effector_pose' in obs_dict:
-                    #     obs_dict_input['end_effector_pose'] = obs_dict['end_effector_pose'].unsqueeze(0)
-                    if 'agent_pos' in obs_dict:
-                        obs_dict_input['agent_pos'] = obs_dict['agent_pos'].unsqueeze(0)
-                        # obs_dict_input['agent_pos'] = obs_dict['agent_pos']
-                    # 정책으로 액션 예측
-                    action_dict = policy.predict_action(obs_dict_input)
-                
-                action = action_dict['action']
-
-                # 환경에 액션 적용
-                obs, reward, done, info = env.step(action)
+            while not done and episode_step < self.max_steps:
+                # 어댑터를 통해 n_action_steps만큼 환경 진행
+                obs, reward, done, info = policy_adapter.step(env, obs)
                 
                 total_reward += reward
-                # 성공 여부 확인 (info의 형태에 따라 달라질 수 있음)
+                episode_step += policy_adapter.n_action_steps
+                
+                # # 디버깅 출력
+                # if episode_step % 50 == 0:
+                #     print(f"Episode {episode_idx}, Step {episode_step}, Reward: {reward}, Done: {done}")
+                
+                # 성공 여부 확인
                 if 'success' in info:
                     success = info['success']
                 else:
                     success = False
+                    
+                # 최대 스텝 수 체크
+                if episode_step >= self.max_steps:
+                    # print(f"Episode {episode_idx} reached max steps limit.")
+                    done = True
             
             # 에피소드 결과 기록
-            all_rewards[episode_idx] = torch.tensor(total_reward, device=device, dtype=dtype)
+            all_rewards[episode_idx] = total_reward.clone().detach().to(device=device, dtype=dtype)
             all_success_rates[episode_idx] = torch.tensor(success, device=device, dtype=torch.bool)
         
         # 평가 결과 정리
@@ -164,8 +164,5 @@ class IsaacLabRunner(BaseRunner):
         log_data['success_rate_top5'] = self.logger_util_top5.average_of_largest_K()
         
         cprint(f"Test Mean Success Rate: {mean_success_rate:.4f}", 'green')
-        
-        # 환경 초기화
-        env.reset()
         
         return log_data

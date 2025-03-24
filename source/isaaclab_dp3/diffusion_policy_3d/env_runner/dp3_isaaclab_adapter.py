@@ -73,124 +73,16 @@ class DP3IsaacLabAdapter:
 
         if self.step_count == 0:
             for key, value in obs_dict.items():
-                processed_obs[key] = torch.stack((obs_dict[key], obs_dict[key]), dim=0)
-
+                batched_value = value.unsqueeze(0)  # (1, ...) 배치 차원 추가
+                processed_obs[key] = torch.stack((batched_value, batched_value), dim=1)
         else:
-            processed_obs = obs_dict
+            for key, value in obs_dict.items():
+                batched_value = value.unsqueeze(0)
+                processed_obs[key] = batched_value
 
         # # 순서 뒤집기 (가장 오래된 observation이 먼저 오도록)
         # obs_list.reverse()
         # TODO: reverse 필요할까?? 어떻게 쌓이고 있는지, 다른 예제는 어떤 순서로 쌓고 있는 건지 확인 필요
-
-
-
-        # 첫 번째 호출인 경우 obs_buffer 초기화
-        if not self.obs_buffer:
-            # 각 키별로 deque 초기화
-            for key, value in obs_dict.items():
-                self.obs_buffer[key] = deque(maxlen=self.n_obs_steps)
-        
-        # 현재 observation을 각 키별로 버퍼에 추가
-        for key, value in obs_dict.items():
-            # 관측값의 차원에 따라 일관되게 처리
-            # 1차원 텐서인 경우 (예: agent_pos [9])
-            if value.dim() == 1:
-                # 1차원 텐서는 그대로 버퍼에 추가
-                self.obs_buffer[key].append(value)
-            # 2차원 이상 텐서인 경우 (예: point_cloud [1024, 6], rgb_image [576, 640, 3])
-            elif value.dim() >= 2:
-                # 이미 n_obs_steps 차원이 있는 경우 (step 메소드에서 반환된 경우)
-                if value.dim() >= 3 and value.shape[0] == self.n_obs_steps:
-                    # 가장 최근 observation만 사용 (마지막 스텝)
-                    self.obs_buffer[key].append(value[-1])
-                else:
-                    # 일반적인 경우: 단일 observation을 버퍼에 추가
-                    self.obs_buffer[key].append(value)
-        
-        # 버퍼에서 observation 히스토리 구성
-        if all(len(buffer) > 0 for buffer in self.obs_buffer.values()):
-            # 각 키별로 observation 스택
-            for key, buffer in self.obs_buffer.items():
-                # 관측값의 차원에 따라 다르게 처리
-                sample_obs = buffer[0]  # 첫 번째 관측값으로 차원 확인
-                
-                if sample_obs.dim() == 1:
-                    # 1차원 텐서인 경우 (예: agent_pos [9])
-                    # 버퍼 내용 검사 및 정규화
-                    normalized_buffer = []
-                    for obs in buffer:
-                        # 모든 텐서가 1차원인지 확인
-                        if obs.dim() == 1:
-                            normalized_buffer.append(obs)
-                        elif obs.dim() > 1:
-                            # 2차원 이상인 경우 마지막 차원만 사용
-                            normalized_buffer.append(obs.reshape(-1))
-                    
-                    # 정규화된 버퍼로 교체
-                    buffer_list = list(normalized_buffer)
-                    
-                    # 히스토리 구성
-                    obs_list = []
-                    for i in range(self.n_obs_steps):
-                        if i < len(buffer_list):
-                            obs_list.append(buffer_list[-(i+1)])
-                        else:
-                            obs_list.append(buffer_list[0])  # 패딩
-                    
-                    # 순서 뒤집기 (가장 오래된 observation이 먼저 오도록)
-                    obs_list.reverse()
-                    
-                    # 모든 텐서가 동일한 크기인지 확인
-                    first_shape = obs_list[0].shape
-                    for i, obs in enumerate(obs_list):
-                        if obs.shape != first_shape:
-                            print(f"Warning: Inconsistent shapes in obs_list at index {i}. Expected {first_shape}, got {obs.shape}")
-                            # 크기가 다른 경우 첫 번째 텐서와 동일한 크기로 조정
-                            obs_list[i] = obs_list[0].clone()
-                    
-                    # 직접 스택하여 [n_obs_steps, feature_dim] 형태로 만듦
-                    stacked_obs = torch.stack(obs_list)  # [n_obs_steps, feature_dim]
-                
-                elif sample_obs.dim() >= 2:
-                    # 2차원 이상 텐서인 경우 (예: point_cloud [1024, 6], rgb_image [576, 640, 3])
-                    # 버퍼 내용 검사 및 정규화
-                    normalized_buffer = []
-                    first_obs = buffer[0]
-                    first_shape = first_obs.shape
-                    
-                    for obs in buffer:
-                        if obs.shape == first_shape:
-                            normalized_buffer.append(obs)
-                        else:
-                            # 차원이 다른 경우 첫 번째 텐서와 동일한 형태로 조정
-                            print(f"Warning: Inconsistent shapes in buffer. Expected {first_shape}, got {obs.shape}")
-                            normalized_buffer.append(first_obs.clone())
-                    
-                    # 정규화된 버퍼로 교체
-                    buffer_list = list(normalized_buffer)
-                    
-                    # 히스토리 구성
-                    obs_list = []
-                    for i in range(self.n_obs_steps):
-                        if i < len(buffer_list):
-                            obs_list.append(buffer_list[-(i+1)])
-                        else:
-                            obs_list.append(buffer_list[0])  # 패딩
-                    
-                    # 순서 뒤집기 (가장 오래된 observation이 먼저 오도록)
-                    obs_list.reverse()
-                    
-                    # 모든 텐서가 동일한 크기인지 한 번 더 확인
-                    for i, obs in enumerate(obs_list):
-                        if obs.shape != first_shape:
-                            print(f"Warning: Inconsistent shapes in obs_list at index {i}. Expected {first_shape}, got {obs.shape}")
-                            # 크기가 다른 경우 첫 번째 텐서와 동일한 크기로 조정
-                            obs_list[i] = obs_list[0].clone()
-                    
-                    # 스택하여 [n_obs_steps, ...] 형태로 만듦
-                    stacked_obs = torch.stack(obs_list)
-                
-                processed_obs[key] = stacked_obs.unsqueeze(0)  # 배치 차원 추가 [1, 2, ...]
         
         return processed_obs
         
@@ -230,13 +122,13 @@ class DP3IsaacLabAdapter:
     #     return current_action.reshape(1, -1)
     # endregion
 
-    def step(self, env, obs):
+    def step(self, env, obs_dict: Dict[str, torch.Tensor]):
         """
         n_action_steps만큼 환경을 진행하고 결과 반환
         
         Args:
             env: Isaac Lab 환경
-            obs: 현재 observation
+            obs_dict: 현재 observation
             
         Returns:
             tuple: (next_obs, reward, done, info)
@@ -246,12 +138,14 @@ class DP3IsaacLabAdapter:
                 - info: 추가 정보
         """
         # 버퍼 초기화
+        for key in obs_dict.keys():
+            self.obs_buffer[key] = None
         self.reward_buffer = []
         self.done_buffer = []
         self.info_buffer = defaultdict(list)
         
-        # 현재 observation을 버퍼에 추가
-        obs_dict = dict(obs)
+        # # 현재 observation을 버퍼에 추가
+        # obs_dict = dict(obs)
         
         # DP3 모델에서 action 시퀀스 예측
         with torch.no_grad():
@@ -264,7 +158,7 @@ class DP3IsaacLabAdapter:
         action_sequence = actions[0]
         
         # 각 action을 순차적으로 처리
-        for act in action_sequence:
+        for i, act in enumerate(action_sequence):
             # 이미 종료된 경우 중단
             if len(self.done_buffer) > 0 and self.done_buffer[-1]:
                 break
@@ -272,7 +166,7 @@ class DP3IsaacLabAdapter:
             # 현재 action을 환경 입력 형태로 변환 (1, action_dim)
             current_action = act.reshape(1, -1)
             
-            # 환경에 action 적용
+            # 환경에 action 적용. Isaac Lab의 manager_based_rl_env.py의 step 메소드 사용
             next_obs, reward, done, info = env.step(current_action)
             
             # 결과 저장
@@ -287,29 +181,12 @@ class DP3IsaacLabAdapter:
             
             self.done_buffer.append(done)
             
-            # observation 업데이트
-            obs = next_obs
-            
-            # 각 키별로 observation 버퍼 업데이트
-            obs_dict = dict(obs)
-            for key, value in obs_dict.items():
-                if key not in self.obs_buffer:
-                    self.obs_buffer[key] = deque(maxlen=self.n_obs_steps)
-                
-                # 관측값의 차원에 따라 일관되게 처리
-                # 1차원 텐서인 경우 (예: agent_pos [9])
-                if value.dim() == 1:
-                    # 1차원 텐서는 그대로 버퍼에 추가
-                    self.obs_buffer[key].append(value)
-                # 2차원 이상 텐서인 경우 (예: point_cloud [1024, 6], rgb_image [576, 640, 3])
-                elif value.dim() >= 2:
-                    # 이미 n_obs_steps 차원이 있는 경우 (step 메소드에서 반환된 경우)
-                    if value.dim() >= 3 and value.shape[0] == self.n_obs_steps:
-                        # 가장 최근 observation만 사용 (마지막 스텝)
-                        self.obs_buffer[key].append(value[-1])
-                    else:
-                        # 일반적인 경우: 단일 observation을 버퍼에 추가
-                        self.obs_buffer[key].append(value)
+            if i == 0:
+                for key, value in next_obs.items():
+                    self.obs_buffer[key] = value.unsqueeze(0)
+            else:
+                for key, value in next_obs.items():
+                    self.obs_buffer[key] = torch.cat((self.obs_buffer[key], value.unsqueeze(0)), dim=0)
             
             # 스텝 카운터 증가
             self.step_count += 1
@@ -330,8 +207,8 @@ class DP3IsaacLabAdapter:
             if len(values) > 0:
                 info[key] = values[-1]
         
-        # 최종 observation 반환
-        final_obs = self._get_obs(self.n_obs_steps)
+        # # 최종 observation 반환
+        final_obs = self.obs_buffer.copy()
         
         return final_obs, total_reward, done, info
 
