@@ -31,13 +31,13 @@ from isaaclab.app import AppLauncher
 
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Record demonstrations for Isaac Lab environments.")
-parser.add_argument("--task", type=str, default='Isaac-Lift-Cube-Franka-IK-Rel-cam-v0', help="Name of the task.")
+parser.add_argument("--task", type=str, default='Isaac-Lift-Cube-Franka-v0', help="Name of the task.")
 # parser.add_argument("--task", type=str, default="Isaac-Lift-Cube-Franka-IK-Rel-v0", help="Name of the task.")
 # parser.add_argument("--task", type=str, default="Isaac-Stack-Cube-Franka-IK-Rel-v0", help="Name of the task.")
 # parser.add_argument("--enable_cameras", action="store_true", help="Enable camera rendering")
 parser.add_argument("--teleop_device", type=str, default="keyboard", help="Device for interacting with environment.")
 parser.add_argument(
-    "--dataset_file", type=str, default="./datasets/Lift_ver2.hdf5", help="File path to export recorded demos."
+    "--dataset_file", type=str, default="./datasets/dummy.hdf5", help="File path to export recorded demos."
 )
 parser.add_argument("--step_hz", type=int, default=30, help="Environment stepping rate in Hz.")
 parser.add_argument(
@@ -54,8 +54,7 @@ AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
 args_cli = parser.parse_args()
 
-if "cam" in args_cli.task.lower():
-    vars(args_cli)["enable_cameras"] = True
+vars(args_cli)["enable_cameras"] = False
 
 if args_cli.teleop_device.lower() == "handtracking":
     vars(args_cli)["experience"] = f'{os.environ["ISAACLAB_PATH"]}/apps/isaaclab.python.xr.openxr.kit'
@@ -162,7 +161,9 @@ def main():
 
     env_cfg.observations.policy.concatenate_terms = False
 
-    env_cfg.sim.enable_cameras = True
+    if "enable_cameras" in vars(args_cli):
+        if vars(args_cli)["enable_cameras"]:
+            env_cfg.sim.enable_cameras = True
 
     env_cfg.recorders: ActionStateRecorderManagerCfg = ActionStateRecorderManagerCfg()
     env_cfg.recorders.dataset_export_dir_path = output_dir
@@ -213,6 +214,12 @@ def main():
             delta_pose = torch.tensor(delta_pose, dtype=torch.float, device=env.device).repeat(env.num_envs, 1)
             # compute actions based on environment
             actions = pre_process_actions(delta_pose, gripper_command)
+            '''
+            delta_pose: 6d pos. 3 pos, 3 rot
+            gripper_command: bool (open/close)
+            actions: delta_pose + gripper_command (7d)
+            
+            '''
 
             # perform action on environment
             env.step(actions)
