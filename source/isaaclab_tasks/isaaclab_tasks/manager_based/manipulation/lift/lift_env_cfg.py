@@ -106,13 +106,22 @@ class ObservationsCfg:
         object_position = ObsTerm(func=mdp.object_position_in_robot_root_frame)
         target_object_position = ObsTerm(func=mdp.generated_commands, params={"command_name": "object_pose"})
         actions = ObsTerm(func=mdp.last_action)
+        agent_pos = ObsTerm(
+            func=mdp.ee_pose_and_griper_pos,
+            params={
+                "articulation_name": "robot",
+                "end_effector_name": "panda_hand",
+                "body_offset": mdp.DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.107]),
+                # body_offset for franka panda hand
+            }
+        )
 
         def __post_init__(self):
             self.enable_corruption = True
             self.concatenate_terms = True
     
     @configclass
-    class VisionRobotCfg(ObsGroup):
+    class VisionCfg(ObsGroup):
         """Observations for DP3 group."""
 
         rgb_image = ObsTerm(
@@ -139,23 +148,13 @@ class ObservationsCfg:
             }
         )
 
-        agent_pos = ObsTerm(
-            func=mdp.ee_pose_and_joint_pos,
-            params={
-                "articulation_name": "robot",
-                "end_effector_name": "panda_hand",
-                "body_offset": mdp.DifferentialInverseKinematicsActionCfg.OffsetCfg(pos=[0.0, 0.0, 0.107]),
-                # body_offset for franka panda hand
-            }
-        )
-
         concatenate_terms = False
 
     # observation groups
     policy: PolicyCfg = PolicyCfg()
 
     # robot vision groups
-    vision_robot: VisionRobotCfg = VisionRobotCfg()
+    vision: VisionCfg = VisionCfg()
 
 
 @configclass
