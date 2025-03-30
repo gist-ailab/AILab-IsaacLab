@@ -54,7 +54,7 @@ class FrankaPickPlaceCamEnvCfg(joint_pos_env_cfg.FrankaPickPlaceEnvCfg):
         spawn=sim_utils.PinholeCameraCfg(
             clipping_range=(0.1, 1.3)  # clipping table
         ),
-        offset=CameraCfg.OffsetCfg(pos=(0.0, -0.1, 1.3), rot=(1.0, 0.0, 0.0, 0.0), convention="opengl"),
+        offset=CameraCfg.OffsetCfg(pos=(0.5, 0.0, 1.3), rot=(1.0, 0.0, 0.0, 0.0), convention="opengl"),
     )
 
     def __post_init__(self):
