@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 def object_reached_goal(
     env: ManagerBasedRLEnv,
-    z_threshold: float = 0.144,  # Z방향 거리 임계값
+    z_threshold: float = 0.06,  # Z방향 거리 임계값. 살짝 마진 둠
     plane_x_size: float = 0.18,  # 평면 X방향 크기
     plane_y_size: float = 0.262, # 평면 Y방향 크기
     object_cfg: SceneEntityCfg = SceneEntityCfg("object"),
@@ -49,10 +49,12 @@ def object_reached_goal(
     klt: RigidObject = env.scene[klt_cfg.name]
 
     # 목표 위치
-    des_pos_w = klt.data.root_pos_w[:, :3]
+    des_pos_w = klt.data.root_pos_w[:, :3]  # 박스 바닥면이 아니라 지면과 맡닿은 곳으로 부터 58.8mm 위에 위치
+    print(f"des_pos: {des_pos_w}")
 
     # 물체 위치
     obj_pos_w = object.data.root_pos_w[:, :3]
+    print(f"obj_pos: {obj_pos_w}")
     
     # 평면 경계 계산 (평면 중심에서 각 방향으로의 반경)
     half_x = plane_x_size / 2.0
@@ -65,10 +67,7 @@ def object_reached_goal(
     
     # Z방향 거리 계산 (물체가 평면보다 위에 있는지)
     z_distance = torch.abs(obj_pos_w[:, 2] - des_pos_w[:, 2])
-    z_close_enough = z_distance < z_threshold
-    
-    # 디버깅용 정보 출력
-    # print(f"XY in bounds: {xy_in_bounds}, Z distance: {z_distance}, Z close: {z_close_enough}")
+    z_close_enough = (z_distance < z_threshold) & (z_distance > 0)
     
     # 평면 XY 범위 내에 있고 Z방향 거리가 임계값 이하인지 확인
     return xy_in_bounds & z_close_enough
