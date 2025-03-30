@@ -41,6 +41,14 @@ class PreStepFlatPolicyObservationsRecorderCfg(RecorderTermCfg):
     class_type: type[RecorderTerm] = recorders.PreStepFlatPolicyObservationsRecorder
 
 
+@configclass
+class PreStepVisionObservationsRecorderCfg(RecorderTermCfg):
+    """Configuration for the step vision observation recorder term."""
+
+    class_type: type[RecorderTerm] = recorders.PreStepVisionObservationsRecorder
+
+
+
 ##
 # Recorder manager configurations.
 ##
@@ -54,3 +62,4 @@ class ActionStateRecorderManagerCfg(RecorderManagerBaseCfg):
     record_post_step_states = PostStepStatesRecorderCfg()
     record_pre_step_actions = PreStepActionsRecorderCfg()
     record_pre_step_flat_policy_observations = PreStepFlatPolicyObservationsRecorderCfg()
+    record_pre_step_vision_observations = PreStepVisionObservationsRecorderCfg()
