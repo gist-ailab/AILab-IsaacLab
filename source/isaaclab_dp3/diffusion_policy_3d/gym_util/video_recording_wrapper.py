@@ -17,7 +17,6 @@ class SimpleVideoRecordingWrapper(gym.Wrapper):
         """
         When file_path is None, don't record.
         """
-        # super().__init__(env)   # TODO: 디버깅 모드로 안에 들어가서 env 타입이 어떤건지 더 확인해보자.
         
         self.env = env
         self._action_space: spaces.Space[WrapperActType] | None = None
