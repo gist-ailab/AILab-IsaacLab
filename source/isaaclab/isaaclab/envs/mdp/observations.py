@@ -809,7 +809,7 @@ def end_effector_pose(
     return ee_pose  # Shape: (1, num_envs, 7), 맨 앞은 batch dimension
 
 
-def ee_pose_and_joint_pos(
+def ee_pose_and_griper_pos(
         env: ManagerBasedEnv,
         articulation_name: str = "robot",
         end_effector_name: str = "panda_hand",  # 로봇 모델의 end-effector 링크 이름
@@ -834,6 +834,6 @@ def ee_pose_and_joint_pos(
     gripper_joint_pose = gripper_joint_pose[0]   # ee_pose와 차원을 맞추기 위해 squeeze
     ee_pose = end_effector_pose(env, articulation_name, end_effector_name, body_offset)
 
-    ee_pose_and_joint_pos = torch.cat([ee_pose, gripper_joint_pose])
+    ee_pose_and_gripper_pos = torch.cat([ee_pose, gripper_joint_pose])
     
-    return ee_pose_and_joint_pos
+    return ee_pose_and_gripper_pos
