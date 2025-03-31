@@ -50,11 +50,9 @@ def object_reached_goal(
 
     # 목표 위치
     des_pos_w = klt.data.root_pos_w[:, :3]  # 박스 바닥면이 아니라 지면과 맡닿은 곳으로 부터 58.8mm 위에 위치
-    print(f"des_pos: {des_pos_w}")
 
     # 물체 위치
     obj_pos_w = object.data.root_pos_w[:, :3]
-    print(f"obj_pos: {obj_pos_w}")
     
     # 평면 경계 계산 (평면 중심에서 각 방향으로의 반경)
     half_x = plane_x_size / 2.0
