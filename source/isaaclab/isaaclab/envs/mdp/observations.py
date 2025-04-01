@@ -806,7 +806,7 @@ def end_effector_pose(
     # Combine position and orientation into a single pose tensor (7D)
     ee_pose = torch.cat([ee_pose_b[0], ee_quat_b[0]])
     
-    return ee_pose  # Shape: (1, num_envs, 7), 맨 앞은 batch dimension
+    return ee_pose  # Shape: (7), 3 position + 4 quaternion
 
 
 def ee_pose_and_griper_pos(
@@ -835,5 +835,6 @@ def ee_pose_and_griper_pos(
     ee_pose = end_effector_pose(env, articulation_name, end_effector_name, body_offset)
 
     ee_pose_and_gripper_pos = torch.cat([ee_pose, gripper_joint_pose])
+    ee_pose_and_gripper_pos = ee_pose_and_gripper_pos.unsqueeze(0)  # (1, 9)로 변환
     
     return ee_pose_and_gripper_pos
