@@ -442,9 +442,9 @@ def point_cloud(
     # Concatenate sampled point cloud and RGB
     sampled_data = torch.cat([sampled_pcd, sampled_rgb], dim=1)
 
-    # # shape: (num_points, 3)을 (1, num_points, 3)으로 확장. batch dimension 추가
-    # return sampled_data.unsqueeze(0)
-    return sampled_data
+    # # shape: (num_points, 3)을 (1, num_points, 3)으로 확장. sequence dimension 추가
+    return sampled_data.unsqueeze(0)
+    # return sampled_data
 
 
 # 격자기반 point cloud sampling
