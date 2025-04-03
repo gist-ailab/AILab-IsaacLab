@@ -1,0 +1,40 @@
+name: isaac_pick_place
+
+task_name: Isaac_Pick-Place-Franka-v0
+
+shape_meta: &shape_meta
+  # acceptable types: rgb, low_dim
+  obs:
+    point_cloud:
+      shape: [1024, 3]
+      type: point_cloud
+    # imagin_robot:
+    #   shape: [96, 7]
+    #   type: point_cloud
+    agent_pos:
+      shape: [9]  # [x, y, z, qw, qx, qy, qz] + ee_joint_pos(2)
+      type: low_dim
+  action:
+    shape: [8]  # [x, y, z, qw, qx, qy, qz] + gripper_joint_pos(1)
+
+env_runner:
+  _target_: diffusion_policy_3d.env_runner.isaaclab_runner.IsaacLabRunner
+  eval_episodes: 10
+  max_steps: 300
+  n_obs_steps: ${n_obs_steps}
+  n_action_steps: ${n_action_steps}
+  fps: 10
+  # task_name: {task_name}
+  task_name: Isaac_Pick-Place-Franka-v0
+  device: ${training.device}
+  # use_point_crop: ${policy.use_point_crop}
+
+dataset:
+  _target_: diffusion_policy_3d.dataset.isaaclab_dataset.IsaacLabDataset
+  zarr_path: /home/bak/Projects/AILab-IsaacLab/datasets/isaac_pick_place.zarr
+  horizon: ${horizon}
+  pad_before: ${eval:'${n_obs_steps}-1'}
+  pad_after: ${eval:'${n_action_steps}-1'}
+  seed: 42
+  val_ratio: 0.02
+  max_train_episodes: 90

@@ -1,5 +1,5 @@
 defaults:
-  - task: isaaclab_lift
+  - task: isaac_pick_place
   # - task: adroit_hammer
 
 name: train_dp3
