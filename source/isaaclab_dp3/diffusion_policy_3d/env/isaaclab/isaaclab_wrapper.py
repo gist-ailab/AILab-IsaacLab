@@ -7,7 +7,7 @@ from typing import Dict, Any, Tuple
 from isaaclab.envs import ManagerBasedRLEnv
 from isaaclab_tasks.utils.parse_cfg import parse_env_cfg
 from isaaclab_tasks.manager_based.manipulation.lift.config.franka.cam_ik_rel_env_cfg import FrankaCubeLiftEnvCfg
-
+from isaaclab.utils.math import euler_xyz_from_quat
 
 class IsaacLabEnv(gym.Env):
     """Isaac Lab 환경을 위한 래퍼 클래스
@@ -65,18 +65,18 @@ class IsaacLabEnv(gym.Env):
         self.observation_space = gym.spaces.Dict({
             'point_cloud': gym.spaces.Box(
                 low=-np.inf, high=np.inf,
-                shape=self.observation_space_raw['vision_robot']['point_cloud'].shape,
+                shape=self.observation_space_raw['vision']['point_cloud'].shape,
                 dtype=np.float32
             ),
             # # rgb_image는 안 써서 주석처리
             # 'rgb_image': gym.spaces.Box(
             #     low=-np.inf, high=np.inf,
-            #     shape=self.observation_space_raw['vision_robot']['rgb_image'].shape,
+            #     shape=self.observation_space_raw['vision']['rgb_image'].shape,
             #     dtype=np.int32
             # ),
             'agent_pos': gym.spaces.Box(
                 low=-np.inf, high=np.inf,
-                shape=self.observation_space_raw['vision_robot']['agent_pos'].shape,
+                shape=self.observation_space_raw['policy']['agent_pos'].shape,
                 dtype=np.float32
             ),
         })
@@ -109,7 +109,16 @@ class IsaacLabEnv(gym.Env):
                 - info: 추가 정보
         """
         # ManagerBasedRLEnv의 step 메소드는 (obs, reward, terminated, truncated, info)를 반환
-        obs, reward, terminated, time_out, info = self.env.step(action)
+        action_euler = torch.zeros_like(action)[..., :-1]   # euler는 quaternion보다 하나 작으므로 slicing 함.
+        action_euler[:, 0:3] = action[:, 0:3]
+        action_euler[:, -1] = action[:, -1]
+        
+        # quaternion을 euler_xyz로 변환
+        (roll, pitch, yaw) = euler_xyz_from_quat(action[:, 3:7])
+        euler_xyz = torch.stack((roll, pitch, yaw), dim=1)
+        action_euler[:, 3:6] = euler_xyz
+        
+        obs, reward, terminated, time_out, info = self.env.step(action_euler)
         
         # 스텝 카운터 증가 및 누적 보상 업데이트
         self.current_step += 1
@@ -122,9 +131,9 @@ class IsaacLabEnv(gym.Env):
         """원시 관측을 Diffusion Policy 형식으로 변환합니다."""
         # 기본 관측 딕셔너리 생성
         obs_dict = {
-            'point_cloud': raw_obs['vision_robot']['point_cloud'],
+            'point_cloud': raw_obs['vision']['point_cloud'],
             # 'rgb_image': raw_obs['vision_robot']['rgb_image'].squeeze(),    # 차원 맞추기 위해 squeeze, 안 써서 주석처리
-            'agent_pos': raw_obs['vision_robot']['agent_pos'],
+            'agent_pos': raw_obs['policy']['agent_pos'],
         }
                 
         return obs_dict

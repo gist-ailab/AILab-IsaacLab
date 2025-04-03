@@ -72,54 +72,14 @@ class DP3IsaacLabAdapter:
 
         if self.step_count == 0:
             for key, value in obs_dict.items():
-                batched_value = value.unsqueeze(0)  # (1, ...) 배치 차원 추가
-                processed_obs[key] = torch.stack((batched_value, batched_value), dim=1)
+                processed_obs[key] = torch.stack((value, value), dim=1)
         else:
             for key, value in obs_dict.items():
                 batched_value = value.unsqueeze(0)
                 processed_obs[key] = batched_value
-
-        # # 순서 뒤집기 (가장 오래된 observation이 먼저 오도록)
-        # obs_list.reverse()
-        # TODO: reverse 필요할까?? 어떻게 쌓이고 있는지, 다른 예제는 어떤 순서로 쌓고 있는 건지 확인 필요
         
         return processed_obs
-        
-    # region
-    # def predict_action(self, obs_dict: Dict[str, Any]) -> torch.Tensor:
-    #     """
-    #     DP3 모델을 사용하여 action 예측
-        
-    #     Args:
-    #         obs_dict: Isaac Lab 환경에서 받은 observation 딕셔너리
-                      
-    #     Returns:
-    #         action: Isaac Lab 환경에 입력할 action
-    #                형태: (num_envs, action_dim)
-    #     """
-    #     # observation 처리
-    #     dp3_obs_dict = self.process_observation(obs_dict)
-        
-    #     # 새로운 action sequence가 필요한 경우에만 DP3 모델 호출
-    #     if self.current_step_idx == 0 or self.action_buffer is None:
-    #         with torch.no_grad():
-    #             action_dict = self.policy.predict_action(dp3_obs_dict)
-    #             # action 형태: (batch_size, n_action_steps, action_dim)
-    #             self.current_actions = action_dict['action']
-    #             self.current_action_idx = 0
-        
-    #     # 현재 step에 해당하는 action 선택
-    #     current_action = self.current_actions[:, self.current_action_idx]
-        
-    #     # 다음 step으로 이동
-    #     self.current_action_idx = (self.current_action_idx + 1) % self.n_action_steps
-        
-    #     # 스텝 카운터 증가
-    #     self.step_count += 1
-        
-    #     # Isaac Lab 형식에 맞게 변환: (1, action_dim)
-    #     return current_action.reshape(1, -1)
-    # endregion
+
 
     def step(self, env, obs_dict: Dict[str, torch.Tensor]):
         """
@@ -170,10 +130,10 @@ class DP3IsaacLabAdapter:
             
             if i == 0:
                 for key, value in next_obs.items():
-                    self.obs_buffer[key] = value.unsqueeze(0)
+                    self.obs_buffer[key] = value
             else:
                 for key, value in next_obs.items():
-                    self.obs_buffer[key] = torch.cat((self.obs_buffer[key], value.unsqueeze(0)), dim=0)
+                    self.obs_buffer[key] = torch.cat((self.obs_buffer[key], value), dim=0)
             
             # 스텝 카운터 증가
             self.step_count += 1
