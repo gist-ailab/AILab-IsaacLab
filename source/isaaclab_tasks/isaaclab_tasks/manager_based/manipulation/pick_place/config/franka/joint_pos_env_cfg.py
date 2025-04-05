@@ -61,6 +61,7 @@ class FrankaPickPlaceEnvCfg(PickPlaceEnvCfg):
                     max_depenetration_velocity=5.0,
                     disable_gravity=False,
                 ),
+                semantic_tags=[("class", "cube")],
             ),
         )
 
@@ -79,6 +80,7 @@ class FrankaPickPlaceEnvCfg(PickPlaceEnvCfg):
                     max_depenetration_velocity=5.0,
                     disable_gravity=False,
                 ),
+                semantic_tags=[("class", "small_KLT")],
             ),
         )
 

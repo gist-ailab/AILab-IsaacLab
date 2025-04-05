@@ -50,7 +50,7 @@ class FrankaPickPlaceCamEnvCfg(joint_pos_env_cfg.FrankaPickPlaceEnvCfg):
         update_period=0.1,
         height=576,
         width=640,
-        data_types=["rgb", "depth"],
+        data_types=["rgb", "depth", "instance_segmentation_fast"],
         spawn=sim_utils.PinholeCameraCfg(
             clipping_range=(0.1, 1.5)  # clipping table
         ),
