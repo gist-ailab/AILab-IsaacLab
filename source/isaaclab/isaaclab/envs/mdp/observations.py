@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import torch
 from typing import TYPE_CHECKING
+import numpy as np
 
 import isaaclab.utils.math as math_utils
 from isaaclab.assets import Articulation, RigidObject
@@ -264,6 +265,9 @@ def image(
 
     # obtain the input image
     images = sensor.data.output[data_type]
+    # TODO: instance_segmentation_fast 정보를  잘 조절해서 가져오면 될거 같은데.
+    # TODO: pick_place_env_cfg.py에서 어떤 instance를 받아올 것인지 argument으로 넘겨주면 될듯.
+    # 이 코드에서는 넘겨받은 것을 통해 어떤 instance segmentation을 가져올 것인지 결정함.
 
     # depth image conversion
     if (data_type == "distance_to_camera") and convert_perspective_to_orthogonal:
@@ -328,6 +332,95 @@ def visualize_torch_image(img_tensor, title="Torch Image", batch_idx=0):
     print(f"Data type: {img.dtype}")
 
 
+def apply_rgba_mask(rgb_image, depth_image, seg_image, target_rgba_values):
+    """
+    RGB 이미지와 depth 이미지에서 특정 RGBA 값에 해당하는 영역만 추출하고 
+    나머지 부분은 제거하는 함수
+    
+    Args:
+        rgb_image: RGB 이미지 텐서 [H, W, 3]
+        depth_image: Depth 이미지 텐서 [H, W] 또는 [H, W, 1]
+        target_rgba_values: 마스크로 사용할 RGBA 값 리스트 [(R, G, B, A), ...]
+        seg_image: 세그멘테이션 이미지 텐서 [H, W, 3] (선택적)
+        
+    Returns:
+        masked_rgb: 마스킹된 RGB 이미지
+        masked_depth: 마스킹된 depth 이미지
+    """
+    
+    # 장치 및 데이터 타입 정보 가져오기
+    device = rgb_image.device
+    dtype = rgb_image.dtype
+    
+    # # 이미지 정보 출력
+    # print(f"RGB 이미지 shape: {rgb_image.shape}")
+    # print(f"Depth 이미지 shape: {depth_image.shape}")
+    # print(f"세그멘테이션 이미지 shape: {seg_image.shape}")
+    
+    # 마스크 초기화
+    height, width = rgb_image.shape[0], rgb_image.shape[1]
+    mask = torch.zeros((height, width), dtype=torch.bool, device=device)    
+    
+    # 세그멘테이션 이미지의 최대값 확인 (정규화 여부)
+    seg_max_val = seg_image.max().item()
+    is_normalized = seg_max_val <= 1.1
+    # print(f"세그멘테이션 이미지 최대값: {seg_max_val}, 정규화 여부: {is_normalized}")
+    
+    # 타겟 RGBA 값 기반 마스크 생성
+    for rgba in target_rgba_values:
+        r, g, b, _ = rgba  # alpha 무시
+        
+        # 정규화된 이미지라면 타겟 값도 정규화
+        if is_normalized:
+            r_target = r / 255.0
+            g_target = g / 255.0
+            b_target = b / 255.0
+        else:
+            r_target = r
+            g_target = g
+            b_target = b
+        
+        # 색상 매칭 임계값 (정규화 여부에 따라 조정)
+        threshold = 0.05 if is_normalized else 10
+        
+        # 세그멘테이션 이미지에서 색상 매칭
+        r_match = torch.abs(seg_image[:, :, 0] - r_target) <= threshold
+        g_match = torch.abs(seg_image[:, :, 1] - g_target) <= threshold
+        b_match = torch.abs(seg_image[:, :, 2] - b_target) <= threshold
+        
+        # 모든 채널이 매칭되는 픽셀 찾기
+        color_mask = r_match & g_match & b_match
+        
+        # 전체 마스크에 추가
+        mask = mask | color_mask
+        # print(f"색상 ({r}, {g}, {b})에 매칭된 픽셀: {color_mask.sum().item()}")
+
+    # 마스크 상태 확인
+    total_mask_pixels = mask.sum().item()   # 기능상 없어도 됨. 디버깅 필요할 때 출력하여 사용
+    
+    # 마스크 채널 확장
+    if len(rgb_image.shape) == 3:
+        rgb_mask = mask.unsqueeze(-1).expand(-1, -1, 3)
+    else:
+        rgb_mask = mask
+    
+    if len(depth_image.shape) == 3:
+        depth_mask = mask.unsqueeze(-1)
+    else:
+        depth_mask = mask
+    
+    # 마스크 적용
+    masked_rgb = torch.zeros_like(rgb_image)
+    masked_depth = torch.zeros_like(depth_image)
+    
+    # 마스크 내 픽셀만 복사
+    masked_rgb[rgb_mask] = rgb_image[rgb_mask]
+    masked_depth[depth_mask] = depth_image[depth_mask]
+    
+    return masked_rgb, masked_depth
+
+
+
 def point_cloud(
     env: ManagerBasedEnv,
     sensor_cfg: SceneEntityCfg = SceneEntityCfg("camera"),
@@ -344,12 +437,28 @@ def point_cloud(
     """
     # Get camera sensor
     sensor: Camera = env.scene.sensors[sensor_cfg.name]
-    
-    # Create rgbd point cloud
+
+    # 아래 정보는 argument로 넘겨받아야 함. 일단 구현을 위해 내부에서 직접적으로 언급해봄
+    semantics = sensor.data.info[0]['instance_segmentation_fast']['idToSemantics']
+    mask_list = []
+    for rgba, info in semantics.items():
+        # class 값을 가져와서 소문자인지 확인
+        class_name = info['class']
+        # 모든 글자가 소문자인지 확인 (islower()는 문자열 전체가 소문자일 때만 True 반환)
+        if class_name.islower():
+            mask_list.append(rgba)
+        # if class_name.islower() and class_name != 'robot':
+        #     mask_list.append(rgba)
+
+    rgb = sensor.data.output["rgb"][0]
+    depth = sensor.data.output["depth"][0]
+    seg = sensor.data.output["instance_segmentation_fast"][0]
+    mask_rgb, mask_depth = apply_rgba_mask(rgb, depth, seg, mask_list)
+
     point_cloud, rgb = create_pointcloud_from_rgbd(
         intrinsic_matrix=sensor.data.intrinsic_matrices[0],  # Using first camera
-        depth=sensor.data.output["depth"][0],
-        rgb=sensor.data.output["rgb"][0],
+        depth=mask_depth,
+        rgb=mask_rgb,
         position=sensor.data.pos_w[0],
         orientation=sensor.data.quat_w_ros[0],
         device=env.device
@@ -410,6 +519,7 @@ def point_cloud(
     visualize_pointcloud_o3d(unique_pcd, unique_rgb)
     visualize_pointcloud_o3d(unique_pcd)
     visualize_pointcloud_o3d(point_cloud, rgb)
+    visualize_pointcloud_o3d(sampled_pcd, sampled_rgb)
     '''
 
     # Uniform random sampling
