@@ -80,7 +80,7 @@ class FrankaPickPlaceEnvCfg(PickPlaceEnvCfg):
                     max_depenetration_velocity=5.0,
                     disable_gravity=False,
                 ),
-                semantic_tags=[("class", "small_KLT")],
+                semantic_tags=[("class", "small_klt")],
             ),
         )
 
@@ -104,18 +104,6 @@ class FrankaPickPlaceEnvCfg(PickPlaceEnvCfg):
                 ),
             ],
         )
-
-        # small_kit_pos = self.scene.small_klt.init_state.pos
-        # self.commands.object_pose.ranges = mdp.UniformPoseCommandCfg.Ranges(
-        #     pos_x=(small_kit_pos[0] - 0.07, small_kit_pos[0] + 0.07),
-        #     pos_y=(small_kit_pos[1] - 0.03, small_kit_pos[1] + 0.03),
-        #     pos_z=(0, 0), roll=(0, 0), pitch=(0, 0), yaw=(0, 0)
-        # )
-        #     pos_x=(self.scene.small_klt_pos[0] - 0.07, self.scene.small_klt_pos[0] + 0.07),
-        #     pos_y=(self.scene.small_klt_pos[1] - 0.03, self.scene.small_klt_pos[1] + 0.03),
-        #     pos_z=(0, 0), roll=(0, 0), pitch=(0, 0), yaw=(0, 0)
-        # )
-
 
 
 
