@@ -110,14 +110,16 @@ class IsaacLabEnv(gym.Env):
         """
         # ManagerBasedRLEnv의 step 메소드는 (obs, reward, terminated, truncated, info)를 반환
         action_euler = torch.zeros_like(action)[..., :-1]   # euler는 quaternion보다 하나 작으므로 slicing 함.
-        action_euler[:, 0:3] = action[:, 0:3]
-        action_euler[:, -1] = action[:, -1]
+        action_euler[:, 0:3] = action[:, 0:3]   # copy x, y, z position
+        action_euler[:, -1] = action[:, -1]     # copy gripper action
         
         # quaternion을 euler_xyz로 변환
         (roll, pitch, yaw) = euler_xyz_from_quat(action[:, 3:7])
         euler_xyz = torch.stack((roll, pitch, yaw), dim=1)
         action_euler[:, 3:6] = euler_xyz
         
+        # action이 두 frame 사이의 pose 변화량으로 학습했기 때문에 scale해주는 것이 필요함.
+        action_euler = action_euler * 10
         obs, reward, terminated, time_out, info = self.env.step(action_euler)
         
         # 스텝 카운터 증가 및 누적 보상 업데이트
