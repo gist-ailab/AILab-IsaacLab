@@ -27,9 +27,6 @@ class FrankaPickPlaceEnvCfg(PickPlaceEnvCfg):
         # post init of parent
         super().__post_init__()
 
-        # Set Franka as robot
-        self.scene.robot = FRANKA_PANDA_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
-
         # Set actions for the specific robot type (franka)
         self.actions.arm_action = mdp.JointPositionActionCfg(
             asset_name="robot", joint_names=["panda_joint.*"], scale=0.5, use_default_offset=True
@@ -40,11 +37,6 @@ class FrankaPickPlaceEnvCfg(PickPlaceEnvCfg):
             open_command_expr={"panda_finger_.*": 0.04},
             close_command_expr={"panda_finger_.*": 0.0},
         )
-        
-        # # Set the body name for the end effector
-        # self.commands.object_pose.body_name = "small_KLT"
-        # self.commands.object_pose.body_name = "Object"
-        # self.commands.object_pose.body_name = "panda_hand"
 
         # Set Cube as object
         self.scene.object = RigidObjectCfg(
