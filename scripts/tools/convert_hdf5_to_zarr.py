@@ -9,8 +9,7 @@ from termcolor import cprint
 import open3d as o3d  # Import Open3D
 import matplotlib.pyplot as plt # Import matplotlib
 import torch
-from isaaclab.utils.math import quat_from_euler_xyz
-
+from isaaclab.utils.math import quat_mul, quat_inv, normalize, quat_box_minus
 
 def visualize_point_cloud(points):
     """Visualizes a point cloud using Open3D."""
@@ -202,6 +201,40 @@ def sample_rgb_point_cloud(point_cloud, num_points=1024, device='cuda'):
     return result
 
 
+def compute_pose_diff(pose1: torch.Tensor, pose2: torch.Tensor) -> torch.Tensor:
+    """math.py 모듈의 함수들을 사용하여 두 포즈 배치 간의 차이를 계산합니다.
+    
+    Args:
+        pose1: 첫 번째 포즈 배치. 형태는 (N, 7)이며 각 행은 [x, y, z, qw, qx, qy, qz] 형식입니다.
+        pose2: 두 번째 포즈 배치. 형태는 (N, 7)이며 각 행은 [x, y, z, qw, qx, qy, qz] 형식입니다.
+        
+    Returns:
+        두 포즈 간의 차이. 형태는 (N, 7)이며 각 행은 [dx, dy, dz, dqw, dqx, dqy, dqz] 형식입니다.
+    """
+    
+    # 입력 검증
+    assert pose1.shape == pose2.shape, f"입력 형태가 일치하지 않습니다: {pose1.shape} != {pose2.shape}"
+    assert pose1.shape[-1] == 7, f"입력 형태는 (N, 7)이어야 합니다. 현재: {pose1.shape}"
+    
+    # 위치와 쿼터니언 분리
+    pos1, quat1 = pose1[:, :3], pose1[:, 3:7]
+    pos2, quat2 = pose2[:, :3], pose2[:, 3:7]
+    
+    # 위치 차이 계산
+    pos_diff = pos2 - pos1
+    
+    # 쿼터니언 차이 계산 (q_diff = q2 * q1^-1)
+    quat_diff = quat_mul(quat2, quat_inv(quat1))
+    
+    # 쿼터니언이 단위 쿼터니언인지 확인하고 정규화
+    quat_diff = normalize(quat_diff)
+    
+    # 위치 차이와 쿼터니언 차이 결합
+    pose_diff = torch.cat([pos_diff, quat_diff], dim=1)
+    
+    return pose_diff
+
+
 def hdf5_to_zarr(hdf5_path, zarr_path, chunk_size=100):
     """
     Converts an HDF5 file to a Zarr file.
@@ -239,59 +272,78 @@ def hdf5_to_zarr(hdf5_path, zarr_path, chunk_size=100):
     with h5py.File(hdf5_path, 'r') as hdf5_file:
         first_demo_name = sorted(hdf5_file['data'].keys())[0]
         first_demo = hdf5_file['data'][first_demo_name]
-        first_obs_policy = first_demo['obs_policy']
-        first_obs_vision = first_demo['obs_vision']
+        first_obs_policy = first_demo['post_obs_policy']
+        first_obs_vision = first_demo['post_obs_vision']
 
         
         # Get sample shapes from 10th step of the first demo
-        # conert euler to quaternion on action
-        sample_action_euler = torch.from_numpy(first_obs_policy['actions'][10]).to(device='cuda')
-        quat = quat_from_euler_xyz(sample_action_euler[3], sample_action_euler[4], sample_action_euler[5])
-        sample_action = torch.cat([sample_action_euler[:3], quat, sample_action_euler[6:]], dim=0).cpu().numpy()
+        # covert euler to quaternion on action
+        sample_frame = 10
+        gripper_condition = first_obs_policy['actions'][sample_frame][-1]
+        ee_pos_1 = first_obs_policy['agent_pos'][sample_frame-1][:-2]
+        ee_pos_2 = first_obs_policy['agent_pos'][sample_frame][:-2]
+        pos_1 = torch.from_numpy(ee_pos_1).to(device='cuda').unsqueeze(0)
+        pos_2 = torch.from_numpy(ee_pos_2).to(device='cuda').unsqueeze(0)
+        pos_diff = compute_pose_diff(pos_2, pos_1)  # 두 포즈 간의 차이 계산
+        sample_action = torch.cat([pos_diff, torch.tensor([[gripper_condition]], device='cuda')], dim=1).cpu().numpy()[0]
 
-        sample_state = first_obs_policy['agent_pos'][10]
-        sample_rgb = first_obs_vision['rgb_image'][10]
-        sample_depth = first_obs_vision['depth'][10]
-        sample_pc = first_obs_vision['point_cloud'][10]
+        # position_diff = first_obs_policy['agent_pos'][sample_frame][:3] - first_obs_policy['agent_pos'][sample_frame-1][:3]
+        # q1 = torch.from_numpy(first_obs_policy['agent_pos'][sample_frame-1][3:7]).to(device='cuda').unsqueeze(0)
+        # q2 = torch.from_numpy(first_obs_policy['agent_pos'][sample_frame][3:7]).to(device='cuda').unsqueeze(0)
+        # q1_norm = normalize(q1)
+        # q2_norm = normalize(q2)
+        # quat_diff_tensor = quat_box_minus(q1_norm, q2_norm)
+        # quat_diff = quat_diff_tensor.cpu().numpy()[0]
+        # gripper_condition = first_obs_policy['actions'][sample_frame][-1]
+        # sample_action = np.hstack([position_diff, quat_diff, gripper_condition])
+
+        # ee_pos = first_obs_policy['agent_pos'][sample_frame][:7]                  # gripper position 대신 gripper_condition을 사용하는 상태
+        # sample_state = np.concatenate([ee_pos, np.array([gripper_condition])])    # gripper position 대신 gripper_condition을 사용하는 상태
+        sample_state = first_obs_policy['agent_pos'][sample_frame]
+        sample_rgb = first_obs_vision['rgb_image'][sample_frame]
+        sample_depth = first_obs_vision['depth'][sample_frame]
+        sample_pc = first_obs_vision['point_cloud'][sample_frame]
         
         # Count total frames and create episode ends list
         for demo_name in tqdm(sorted(hdf5_file['data'].keys()), desc="Counting frames"):
             demo_group = hdf5_file['data'][demo_name]
-            obs_policy_group = demo_group['obs_policy']
+            obs_policy_group = demo_group['post_obs_policy']
             frames = len(obs_policy_group['actions']) -5   # Skip first 5 frames. A margin to remove frames corresponding to the previous episode.
             total_frames += frames
             episode_ends.append(total_frames)
     
-    # Create datasets with known shapes and total size
-    img_ds = zarr_data.create_dataset('img', 
-                                      shape=(total_frames, *sample_rgb.shape),
-                                      chunks=(chunk_size, *sample_rgb.shape),
-                                      dtype='uint8',
-                                      compressor=compressor)
-    
+
+    # Create datasets with known shapes and total size    
     state_ds = zarr_data.create_dataset('state', 
                                         shape=(total_frames, len(sample_state)),
                                         chunks=(chunk_size, len(sample_state)),
                                         dtype='float32',
                                         compressor=compressor)
     
-    point_cloud_ds = zarr_data.create_dataset('point_cloud', 
-                                             shape=(total_frames, *sample_pc.shape),
-                                             chunks=(chunk_size, *sample_pc.shape),
-                                             dtype='float32',
-                                             compressor=compressor)
+    action_ds = zarr_data.create_dataset('action', 
+                                        shape=(total_frames, len(sample_action)),
+                                        chunks=(chunk_size, len(sample_action)),
+                                        dtype='float32',
+                                        compressor=compressor)
+
+    img_ds = zarr_data.create_dataset('img', 
+                                      shape=(total_frames, *sample_rgb.shape),
+                                      chunks=(chunk_size, *sample_rgb.shape),
+                                      dtype='float32',
+                                      compressor=compressor)
     
     depth_ds = zarr_data.create_dataset('depth', 
                                        shape=(total_frames, *sample_depth.shape),
                                        chunks=(chunk_size, *sample_depth.shape),
                                        dtype='float32',
                                        compressor=compressor)
-    
-    action_ds = zarr_data.create_dataset('action', 
-                                        shape=(total_frames, len(sample_action)),
-                                        chunks=(chunk_size, len(sample_action)),
-                                        dtype='float32',
-                                        compressor=compressor)
+
+    point_cloud_ds = zarr_data.create_dataset('point_cloud', 
+                                             shape=(total_frames, *sample_pc.shape),
+                                             chunks=(chunk_size, *sample_pc.shape),
+                                             dtype='float32',
+                                             compressor=compressor)
+
     
     # Save episode ends metadata
     zarr_meta.create_dataset('episode_ends', 
@@ -305,41 +357,51 @@ def hdf5_to_zarr(hdf5_path, zarr_path, chunk_size=100):
         for demo_name in tqdm(sorted(hdf5_file['data'].keys()), desc="Processing episodes"):
             try:
                 demo_group = hdf5_file['data'][demo_name]
-                obs_policy_group = demo_group['obs_policy']
-                obs_vision_group = demo_group['obs_vision']
+                obs_policy_group = demo_group['post_obs_policy']
+                obs_vision_group = demo_group['post_obs_vision']
                 
-                # Skip first 5 frames [5:]. A margin to remove frames corresponding to the previous episode.
+                # Skip first 'skip_frames' frames [skip_frames:]. A margin to remove frames corresponding to the previous episode.
+                skip_frames = 10
+                # Process state and actions
+                state = obs_policy_group['agent_pos'][skip_frames:]
+                episode_length = len(state)
+                state_tensor = torch.from_numpy(state).to(device='cuda')
+                ee_pos = state_tensor[:, :7]
+                
+                # Calculate end-effector position difference
+                ee_pos_diff = torch.zeros_like(ee_pos)      # 첫 번째 행은 0으로 초기화
 
-                # Get data
-                actions = obs_policy_group['actions'][5:]
-                episode_length = len(actions)
-                
-                # Store actions with quaternion conversion
+                ee_pos_diff = compute_pose_diff(ee_pos[1:], ee_pos[:-1])  # 두 번째 행부터 차이 계산 (current - previous)
+                initial_ee_pos_diff = torch.tensor([0, 0, 0, 1, 0, 0, 0], device='cuda').unsqueeze(0)  # 첫 번째 diff 초기화
+                ee_pos_diff = torch.concat([initial_ee_pos_diff, ee_pos_diff], dim=0)  # 첫 번째 diff를 맨 앞에 추가
+
+
+                actions = obs_policy_group['actions'][skip_frames:]
                 actions_tensor = torch.from_numpy(actions).to(device='cuda')
-                quat = quat_from_euler_xyz(actions_tensor[:, 3], actions_tensor[:, 4], actions_tensor[:, 5])
-                actions = torch.cat([actions_tensor[:, :3], quat, actions_tensor[:, 6:]], dim=1).cpu().numpy()
-                action_ds[current_idx:current_idx + episode_length] = actions
-                
-                # Process and store state
-                # ee_pose = obs_group['end_effector_pose'][5:]
-                # ee_pose = np.squeeze(ee_pose, axis=1)  # Remove singleton dimension if present
-                # joint_pos = obs_group['joint_pos'][5:]
-                # gripper_joint_pos = joint_pos[:, -2:]
-                # state = np.concatenate((ee_pose, gripper_joint_pos), axis=1)
-                state = obs_policy_group['agent_pos'][5:]
+                gripper_condition = actions_tensor[:, -1].unsqueeze(dim=1)
+
+                # modified_state_tensor = torch.cat([ee_pos, gripper_condition], dim=1)           # gripper position 대신 gripper_condition을 사용하는 상태
+                modified_actions_tensor = torch.cat([ee_pos_diff, gripper_condition], dim=1)    # gripper position 대신 gripper_condition을 사용하는 상태
+
+                # Store state
+                # state = modified_state_tensor.cpu().numpy()                                     # gripper position 대신 gripper_condition을 사용하는 상태
                 state_ds[current_idx:current_idx + episode_length] = state.astype(np.float32)
                 
+                # Store actions
+                actions = modified_actions_tensor.cpu().numpy()
+                action_ds[current_idx:current_idx + episode_length] = actions
+
                 # Store RGB image data
-                rgb_image = obs_vision_group['rgb_image'][5:] ### TODO: img_ds로 변환할 때, 뭔가 잘못된듯. 검은색 이미지만 저장되고 있다.
+                rgb_image = obs_vision_group['rgb_image'][skip_frames:]
                 img_ds[current_idx:current_idx + episode_length] = rgb_image
                 
                 # Store depth data
-                depth_image = obs_vision_group['depth'][5:]
+                depth_image = obs_vision_group['depth'][skip_frames:]
                 depth_ds[current_idx:current_idx + episode_length] = depth_image
                 
                 # Store point cloud data
                 # point_cloud = obs_group['point_cloud'][:]
-                point_cloud = obs_vision_group['point_cloud'][5:]
+                point_cloud = obs_vision_group['point_cloud'][skip_frames:]
                 point_cloud_ds[current_idx:current_idx + episode_length] = point_cloud
                 
                 # Update the current index
@@ -377,7 +439,7 @@ def hdf5_to_zarr(hdf5_path, zarr_path, chunk_size=100):
     # Visualize sample data if enabled
     if args.visualize:
         print("Visualizing sample data...")
-        visualize_image(img_ds[0])  # rgb image가 검게 저장된 문제가 있음.
+        visualize_image(img_ds[0])
         visualize_point_cloud(point_cloud_ds[0])
 
 
@@ -497,10 +559,10 @@ def visualize_episode_data(zarr_path, episode_idx=0):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Convert HDF5 file to Zarr format.")
     parser.add_argument("--hdf5_path", type=str,
-                        default='/home/bak/Projects/AILab-IsaacLab/datasets/dummy.hdf5',
+                        default='/home/bak/Projects/AILab-IsaacLab/datasets/240413_pick_place.hdf5',
                         help="Path to the input HDF5 file.")
     parser.add_argument("--zarr_path", type=str,
-                        default='/home/bak/Projects/AILab-IsaacLab/datasets/dummy.zarr',
+                        default='/home/bak/Projects/AILab-IsaacLab/datasets/240413_pick_place.zarr',
                         help="Path to the output Zarr file.")
     parser.add_argument("--chunk_size", type=int, default=100,
                         help="Chunk size for Zarr arrays (default: 100).")
