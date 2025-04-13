@@ -330,12 +330,12 @@ class TrainDP3Workspace:
             self.epoch += 1
             del step_log
 
-            # quit Isaac Lab if max epoch reached
-            if local_epoch_idx == (cfg.training.num_epochs-1):
-                env_runner.env.env.env.close()
-                env_runner.env.env.close()
-                env_runner.env.close()
-                simulation_app.close()
+        # quit Isaac Lab if max epoch reached
+        cprint("Training finished, quitting Isaac Lab", 'blue')
+        env_runner.env.env.env.close()
+        env_runner.env.env.close()
+        env_runner.env.close()
+        simulation_app.close()
 
     def eval(self):
         # load the latest checkpoint
@@ -370,7 +370,6 @@ class TrainDP3Workspace:
         env_runner.env.env.env.close()
         env_runner.env.env.close()
         env_runner.env.close()
-        # env_runner.env.env.close()
         simulation_app.close()
                 
         
