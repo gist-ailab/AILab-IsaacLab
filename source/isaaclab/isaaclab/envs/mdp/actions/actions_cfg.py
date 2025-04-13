@@ -9,6 +9,8 @@ from isaaclab.controllers import DifferentialIKControllerCfg, OperationalSpaceCo
 from isaaclab.managers.action_manager import ActionTerm, ActionTermCfg
 from isaaclab.utils import configclass
 
+from curobo.wrap.reacher.ik_solver import IKSolver, IKSolverConfig
+
 from . import binary_joint_actions, joint_actions, joint_actions_to_limits, non_holonomic_actions, task_space_actions
 
 ##
@@ -310,3 +312,39 @@ class OperationalSpaceControllerActionCfg(ActionTermCfg):
     Note: Functional only when ``nullspace_control`` is set to ``"position"`` within the
         ``OperationalSpaceControllerCfg``.
     """
+
+# 추후 아래에 cuRobo 구현
+@configclass
+class cuRoboIKActionCfg(ActionTermCfg):
+    """Configuration for cuRobo action term.
+
+    See :class:`DifferentialInverseKinematicsAction` for more details.
+    """
+
+    @configclass
+    class OffsetCfg:
+        """The offset pose from parent frame to child frame.
+
+        On many robots, end-effector frames are fictitious frames that do not have a corresponding
+        rigid body. In such cases, it is easier to define this transform w.r.t. their parent rigid body.
+        For instance, for the Franka Emika arm, the end-effector is defined at an offset to the the
+        "panda_hand" frame.
+        """
+
+        pos: tuple[float, float, float] = (0.0, 0.0, 0.0)
+        """Translation w.r.t. the parent frame. Defaults to (0.0, 0.0, 0.0)."""
+        rot: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0)
+        """Quaternion rotation ``(w, x, y, z)`` w.r.t. the parent frame. Defaults to (1.0, 0.0, 0.0, 0.0)."""
+
+    class_type: type[ActionTerm] = task_space_actions.cuRoboIKAction
+
+    joint_names: list[str] = MISSING
+    """List of joint names or regex expressions that the action will be mapped to."""
+    body_name: str = MISSING
+    """Name of the body or frame for which IK is performed."""
+    body_offset: OffsetCfg | None = None
+    """Offset of target frame w.r.t. to the body frame. Defaults to None, in which case no offset is applied."""
+    scale: float | tuple[float, ...] = 1.0
+    """Scale factor for the action. Defaults to 1.0."""
+    controller: IKSolverConfig = MISSING
+    """The configuration for the differential IK controller."""

@@ -229,6 +229,12 @@ class DifferentialInverseKinematicsAction(ActionTerm):
         return jacobian
 
 
+# TODO: 아래에 cuRobo IK action term 구현.
+class cuRoboIKAction(ActionTerm):
+    pass
+    
+
+
 class OperationalSpaceControllerAction(ActionTerm):
     r"""Operational space controller action term.
 
