@@ -14,7 +14,7 @@ from isaaclab.app import AppLauncher
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Replay demonstrations in Isaac Lab environments.")
 parser.add_argument("--num_envs", type=int, default=1, help="Number of environments to replay episodes.")
-parser.add_argument("--task", type=str, default='Isaac-Lift-Cube-Franka-IK-Rel-cam-v0', help="Force to use the specified task.")
+parser.add_argument("--task", type=str, default='Isaac_Pick-Place-Franka-v0', help="Force to use the specified task.")
 parser.add_argument(
     "--select_episodes",
     type=int,
@@ -22,7 +22,10 @@ parser.add_argument(
     default=[],
     help="A list of episode indices to be replayed. Keep empty to replay all in the dataset file.",
 )
-parser.add_argument("--dataset_file", type=str, default="datasets/Lift_ver2.hdf5", help="Dataset file to be replayed.")
+# parser.add_argument("--dataset_file", type=str, default="datasets/isaac_pick_place.hdf5", help="Dataset file to be replayed.")
+# parser.add_argument("--dataset_file", type=str, default="datasets/test3_replay.hdf5", help="Dataset file to be replayed.")
+# parser.add_argument("--dataset_file", type=str, default="datasets/test3.hdf5", help="Dataset file to be replayed.")
+parser.add_argument("--dataset_file", type=str, default="datasets/240413_pick_place.hdf5", help="Dataset file to be replayed.")
 parser.add_argument(
     "--validate_states",
     action="store_true",
@@ -38,8 +41,9 @@ AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
 args_cli = parser.parse_args()
 
-if "cam" in args_cli.task.lower():
-    vars(args_cli)["enable_cameras"] = True
+# if "cam" in args_cli.task.lower():
+#     vars(args_cli)["enable_cameras"] = True
+vars(args_cli)["enable_cameras"] = True
 # args_cli.headless = True
 
 # launch the simulator
@@ -187,18 +191,6 @@ def main():
                             )
                             env_episode_data_map[env_id] = episode_data
 
-
-                            # # Get current step index from episode data
-                            target_pos = env_episode_data_map[env_id].data['obs']['target_object_position'][next_episode_index]
-                            
-                            # Update command manager with current target
-                            if hasattr(env, "command_manager"):
-                                # Update ranges to match the target position
-                                env.command_manager.cfg.object_pose.ranges.pos_x = (target_pos[0], target_pos[0])
-                                env.command_manager.cfg.object_pose.ranges.pos_y = (target_pos[1], target_pos[1])
-                                env.command_manager.cfg.object_pose.ranges.pos_z = (target_pos[2], target_pos[2])
-
-
                             # Set initial state for the new episode
                             initial_state = episode_data.get_initial_state()
                             env.reset_to(initial_state, torch.tensor([env_id], device=env.device), is_relative=True)
@@ -216,6 +208,10 @@ def main():
                     while is_paused:
                         env.sim.render()
                         continue
+
+                if 'replay' in args_cli.dataset_file:
+                    actions[0][:3] = actions[0][:3] * 11  # actions가 두 frame 사이의 pose 변화량일 때 사용
+                    actions[0][3:6] = actions[0][3:6] * 11 # actions가 두 frame 사이의 pose 변화량일 때 사용
                 env.step(actions)
 
                 if state_validation_enabled:
