@@ -31,7 +31,8 @@ from isaaclab.app import AppLauncher
 
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Record demonstrations for Isaac Lab environments.")
-parser.add_argument("--task", type=str, default='Isaac-Lift-Cube-Franka-v0', help="Name of the task.")
+parser.add_argument("--task", type=str, default='Isaac_Pick-Place-Franka-v0', help="Name of the task.")
+# parser.add_argument("--task", type=str, default='Isaac-Lift-Cube-Franka-v0', help="Name of the task.")
 # parser.add_argument("--task", type=str, default="Isaac-Lift-Cube-Franka-IK-Rel-v0", help="Name of the task.")
 # parser.add_argument("--task", type=str, default="Isaac-Stack-Cube-Franka-IK-Rel-v0", help="Name of the task.")
 # parser.add_argument("--enable_cameras", action="store_true", help="Enable camera rendering")
@@ -41,12 +42,12 @@ parser.add_argument(
 )
 parser.add_argument("--step_hz", type=int, default=30, help="Environment stepping rate in Hz.")
 parser.add_argument(
-    "--num_demos", type=int, default=40, help="Number of demonstrations to record. Set to 0 for infinite."
+    "--num_demos", type=int, default=30, help="Number of demonstrations to record. Set to 0 for infinite."
 )
 parser.add_argument(
     "--num_success_steps",
     type=int,
-    default=40,
+    default=30,
     help="Number of continuous steps with task success for concluding a demo as successful. Default is 10.",
 )
 # append AppLauncher cli args
@@ -54,7 +55,7 @@ AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
 args_cli = parser.parse_args()
 
-vars(args_cli)["enable_cameras"] = False
+vars(args_cli)["enable_cameras"] = True
 
 if args_cli.teleop_device.lower() == "handtracking":
     vars(args_cli)["experience"] = f'{os.environ["ISAACLAB_PATH"]}/apps/isaaclab.python.xr.openxr.kit'
@@ -78,6 +79,7 @@ from isaaclab.envs.ui import ViewportCameraController
 
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils.parse_cfg import parse_env_cfg
+from isaaclab.utils.math import quat_from_euler_xyz
 
 
 class RateLimiter:
@@ -181,7 +183,9 @@ def main():
 
     # create controller
     if args_cli.teleop_device.lower() == "keyboard":
-        teleop_interface = Se3Keyboard(pos_sensitivity=0.2, rot_sensitivity=0.5)
+        # teleop_interface = Se3Keyboard(pos_sensitivity=0.2, rot_sensitivity=0.5)
+        teleop_interface = Se3Keyboard(pos_sensitivity=0.1, rot_sensitivity=0.25)
+        # teleop_interface = Se3Keyboard(pos_sensitivity=1, rot_sensitivity=1)
     elif args_cli.teleop_device.lower() == "spacemouse":
         teleop_interface = Se3SpaceMouse(pos_sensitivity=0.2, rot_sensitivity=0.5)
     elif args_cli.teleop_device.lower() == "handtracking":
@@ -212,8 +216,10 @@ def main():
             delta_pose, gripper_command = teleop_interface.advance()
             # convert to torch
             delta_pose = torch.tensor(delta_pose, dtype=torch.float, device=env.device).repeat(env.num_envs, 1)
+            # print(f"delta_pose: {delta_pose}, gripper_command: {gripper_command}")
             # compute actions based on environment
             actions = pre_process_actions(delta_pose, gripper_command)
+            # print(f"actions: {actions}")
             '''
             delta_pose: 6d pos. 3 pos, 3 rot
             gripper_command: bool (open/close)

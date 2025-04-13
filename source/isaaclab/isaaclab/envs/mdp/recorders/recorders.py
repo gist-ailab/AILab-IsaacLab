@@ -27,13 +27,36 @@ class PostStepStatesRecorder(RecorderTerm):
     """Recorder term that records the state of the environment at the end of each step."""
 
     def record_post_step(self):
+        # return "post_states", self._env.scene.get_state(is_relative=True)
         return "states", self._env.scene.get_state(is_relative=True)
+
+
+class PostStepActionsRecorder(RecorderTerm):
+    """Recorder term that records the actions at the end of each step."""
+
+    def record_post_step(self):
+        return "post_actions", self._env.action_manager.action
+    
+
+class PostStepFlatPolicyObservationsRecorder(RecorderTerm):
+    """Recorder term that records the policy group observations in each step."""
+
+    def record_post_step(self):
+        return "post_obs_policy", self._env.obs_buf["policy"]
+    
+
+class PostStepVisionObservationsRecorder(RecorderTerm):
+    """Recorder term that records the vision observations in each step."""
+
+    def record_post_step(self):
+        return "post_obs_vision", self._env.obs_buf["vision"]
 
 
 class PreStepActionsRecorder(RecorderTerm):
     """Recorder term that records the actions in the beginning of each step."""
 
     def record_pre_step(self):
+        # return "pre_actions", self._env.action_manager.action
         return "actions", self._env.action_manager.action
 
 
@@ -41,11 +64,11 @@ class PreStepFlatPolicyObservationsRecorder(RecorderTerm):
     """Recorder term that records the policy group observations in each step."""
 
     def record_pre_step(self):
-        return "obs_policy", self._env.obs_buf["policy"]
+        return "pre_obs_policy", self._env.obs_buf["policy"]
     
 
 class PreStepVisionObservationsRecorder(RecorderTerm):
     """Recorder term that records the vision observations in each step."""
 
     def record_pre_step(self):
-        return "obs_vision", self._env.obs_buf["vision"]
+        return "pre_obs_vision", self._env.obs_buf["vision"]

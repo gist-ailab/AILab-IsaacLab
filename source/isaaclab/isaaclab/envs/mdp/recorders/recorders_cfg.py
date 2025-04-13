@@ -21,13 +21,6 @@ class InitialStateRecorderCfg(RecorderTermCfg):
 
 
 @configclass
-class PostStepStatesRecorderCfg(RecorderTermCfg):
-    """Configuration for the step state recorder term."""
-
-    class_type: type[RecorderTerm] = recorders.PostStepStatesRecorder
-
-
-@configclass
 class PreStepActionsRecorderCfg(RecorderTermCfg):
     """Configuration for the step action recorder term."""
 
@@ -48,6 +41,34 @@ class PreStepVisionObservationsRecorderCfg(RecorderTermCfg):
     class_type: type[RecorderTerm] = recorders.PreStepVisionObservationsRecorder
 
 
+@configclass
+class PostStepStatesRecorderCfg(RecorderTermCfg):
+    """Configuration for the step state recorder term."""
+
+    class_type: type[RecorderTerm] = recorders.PostStepStatesRecorder
+
+
+@configclass
+class PostStepActionsRecorderCfg(RecorderTermCfg):
+    """Configuration for the step state recorder term."""
+
+    class_type: type[RecorderTerm] = recorders.PostStepActionsRecorder
+
+
+@configclass
+class PostStepFlatPolicyObservationsRecorderCfg(RecorderTermCfg):
+    """Configuration for the step policy observation recorder term."""
+
+    class_type: type[RecorderTerm] = recorders.PostStepFlatPolicyObservationsRecorder
+
+
+@configclass
+class PostStepVisionObservationsRecorderCfg(RecorderTermCfg):
+    """Configuration for the step vision observation recorder term."""
+
+    class_type: type[RecorderTerm] = recorders.PostStepVisionObservationsRecorder
+
+
 
 ##
 # Recorder manager configurations.
@@ -59,7 +80,14 @@ class ActionStateRecorderManagerCfg(RecorderManagerBaseCfg):
     """Recorder configurations for recording actions and states."""
 
     record_initial_state = InitialStateRecorderCfg()
-    record_post_step_states = PostStepStatesRecorderCfg()
+    
+    # record pre step
     record_pre_step_actions = PreStepActionsRecorderCfg()
     record_pre_step_flat_policy_observations = PreStepFlatPolicyObservationsRecorderCfg()
     record_pre_step_vision_observations = PreStepVisionObservationsRecorderCfg()
+
+    # record post step
+    record_post_step_states = PostStepStatesRecorderCfg()
+    record_post_step_actions = PostStepActionsRecorderCfg()
+    record_post_step_flat_policy_observations = PostStepFlatPolicyObservationsRecorderCfg()
+    record_post_step_vision_observations = PostStepVisionObservationsRecorderCfg()

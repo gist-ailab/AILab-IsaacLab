@@ -490,3 +490,20 @@ class RecorderManager(ManagerBase):
             # add term name and parameters
             self._term_names.append(term_name)
             self._terms[term_name] = term
+
+    def disabled(self):
+        """일시적으로 레코더를 비활성화하는 컨텍스트 매니저"""
+        class DisableContext:
+            def __init__(self, manager):
+                self.manager = manager
+                self.original_enabled = None
+                
+            def __enter__(self):
+                self.original_enabled = self.manager.enabled
+                self.manager.enabled = False
+                return self.manager
+                
+            def __exit__(self, exc_type, exc_val, exc_tb):
+                self.manager.enabled = self.original_enabled
+                
+        return DisableContext(self)
