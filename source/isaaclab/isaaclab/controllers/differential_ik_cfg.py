@@ -61,7 +61,8 @@ class DifferentialIKControllerCfg:
             "pinv": {"k_val": 1.0},
             "svd": {"k_val": 1.0, "min_singular_value": 1e-5},
             "trans": {"k_val": 1.0},
-            "dls": {"lambda_val": 0.01},
+            # "dls": {"lambda_val": 0.01},
+            "dls": {"lambda_val": 0.000000000000000000001},    # BSH 임시로 0.0001로 해봄.
         }
         # update parameters for IK-method if not provided
         ik_params = default_ik_params[self.ik_method].copy()
