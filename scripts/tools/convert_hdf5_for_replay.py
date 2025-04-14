@@ -29,7 +29,7 @@ def quat_from_angle_axis(angle, axis):
     
     return torch.stack([w, x, y, z], dim=1)
 
-def quaternion_to_euler_xyz_diff(q_prev, q_curr):
+def quaternion_to_euler_xyz_diff(q_prev, q_curr, scale_factor=11.0):
     """
     두 쿼터니언 간의 회전 차이를 오일러 각도로 변환합니다.
     
@@ -66,6 +66,7 @@ def quaternion_to_euler_xyz_diff(q_prev, q_curr):
     
     # 회전 각도와 축 계산
     angle = torch.norm(rot_vec, dim=1)
+    angle = angle * scale_factor    # scale factor 적용
     
     # 초기화
     roll = torch.zeros_like(angle)
@@ -134,13 +135,15 @@ def hdf5_for_replay(hdf5_path, hdf5_replay_path):
                     # 첫 프레임은 차이가 없음, 그리퍼 상태만 유지
                     agent_pos_diffs[frame_idx] = np.array([0, 0, 0, 0, 0, 0, original_actions[0][-1]], dtype=np.float32)
                 else:
+                    scale_factor = 11.0 # 스케일 팩터; frame 간 차이가 너무 작아서 스케일링 필요
                     # 위치 차이 계산
                     pos_diff = agent_pos[frame_idx][:3] - agent_pos[frame_idx-1][:3]
+                    pos_diff = pos_diff * scale_factor
                     
                     # 회전 차이 계산
                     q_curr = torch.from_numpy(agent_pos[frame_idx][3:7]).float().cuda()
                     q_prev = torch.from_numpy(agent_pos[frame_idx-1][3:7]).float().cuda()
-                    rot_diff = quaternion_to_euler_xyz_diff(q_prev, q_curr)
+                    rot_diff = quaternion_to_euler_xyz_diff(q_prev, q_curr, scale_factor)
                     # rot_diff = quaternion_to_euler_xyz_diff(q2, q1)
                     
                     # 그리퍼 상태
@@ -158,21 +161,87 @@ def hdf5_for_replay(hdf5_path, hdf5_replay_path):
     
     print(f"Conversion completed. Replayable HDF5 file saved at {hdf5_replay_path}")
 
+
+def delete_failed_episodes(hdf5_path, inspected_file_path):
+    """
+    HDF5 파일에서 실패한 에피소드를 삭제합니다.
+    
+    Args:
+        hdf5_path (str): HDF5 파일 경로.
+    """
+
+    # 원본 파일을 복사
+    shutil.copy(hdf5_path, inspected_file_path)
+
+    failed_indices = [1, 5, 9, 13, 16, 17]
+
+    with h5py.File(inspected_file_path, 'r+') as hdf5_file:
+        # 삭제할 키 목록 수집
+        keys_to_delete = []
+        
+        for demo_key in hdf5_file['data'].keys():
+            # "demo_숫자" 형식에서 숫자 부분 추출
+            try:
+                demo_idx = int(demo_key.split('_')[1])
+                if demo_idx in failed_indices:
+                    keys_to_delete.append(demo_key)
+            except (IndexError, ValueError):
+                print(f"Warning: Could not parse index from key {demo_key}")
+        
+        # 수집된 키 목록을 기반으로 데이터 삭제
+        for key in keys_to_delete:
+            del hdf5_file['data'][key]
+            print(f"Deleted failed episode: {key}")
+            
+        # 남은 데모들의 인덱스 재정렬
+        remaining_keys = sorted(list(hdf5_file['data'].keys()), 
+                              key=lambda x: int(x.split('_')[1]))
+        
+        # 임시 데이터 저장을 위한 그룹 생성
+        if 'temp' in hdf5_file:
+            del hdf5_file['temp']
+        hdf5_file.create_group('temp')
+        
+        # 기존 데이터를 임시 그룹으로 복사
+        for i, old_key in enumerate(remaining_keys):
+            hdf5_file.copy(f'data/{old_key}', f'temp/{old_key}')
+        
+        # 기존 data 그룹 삭제 후 새로 생성
+        del hdf5_file['data']
+        hdf5_file.create_group('data')
+        
+        # 임시 그룹에서 데이터를 다시 data 그룹으로 복사 (새 인덱스 부여)
+        for i, old_key in enumerate(remaining_keys):
+            new_key = f'demo_{i}'
+            hdf5_file.copy(f'temp/{old_key}', f'data/{new_key}')
+            print(f"Renumbered: {old_key} -> {new_key}")
+        
+        # 임시 그룹 삭제
+        del hdf5_file['temp']
+        
+    print(f"성공적으로 {len(keys_to_delete)}개의 실패 에피소드를 삭제하고, 남은 데모의 인덱스를 재정렬했습니다.")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="HDF5 파일을 시뮬레이터 재생용 형식으로 변환합니다.")
     parser.add_argument("--hdf5_path", type=str,
-                        default='/home/bak/Projects/AILab-IsaacLab/datasets/test3.hdf5',
+                        default='/home/bak/Projects/AILab-IsaacLab/datasets/240414_pick_place.hdf5',
                         help="입력 HDF5 파일 경로")
     parser.add_argument("--converted_path", type=str,
-                        default='/home/bak/Projects/AILab-IsaacLab/datasets/test3_replay.hdf5',
+                        default='/home/bak/Projects/AILab-IsaacLab/datasets/240414_pick_place_replay.hdf5',
                         help="출력 재생용 HDF5 파일 경로")
+    parser.add_argument("--inspected_file_path", type=str,
+                        default='/home/bak/Projects/AILab-IsaacLab/datasets/240414_pick_place_inspected.hdf5',
+                        help="검사된 HDF5 파일 경로")
 
     args = parser.parse_args()
 
-    # HDF5 재생용 변환
-    try:
-        hdf5_for_replay(args.hdf5_path, args.converted_path)
-    except Exception as e:
-        print(f"변환 중 오류 발생: {e}")
-        import traceback
-        traceback.print_exc()
+    # # HDF5 재생용 변환
+    # try:
+    #     hdf5_for_replay(args.hdf5_path, args.converted_path)
+    # except Exception as e:
+    #     print(f"변환 중 오류 발생: {e}")
+    #     import traceback
+    #     traceback.print_exc()
+
+    delete_failed_episodes(args.converted_path, args.inspected_file_path)
