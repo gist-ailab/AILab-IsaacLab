@@ -118,8 +118,6 @@ class IsaacLabEnv(gym.Env):
         euler_xyz = torch.stack((roll, pitch, yaw), dim=1)
         action_euler[:, 3:6] = euler_xyz
         
-        # action이 두 frame 사이의 pose 변화량으로 학습했기 때문에 scale해주는 것이 필요함.
-        action_euler = action_euler * 11
         obs, reward, terminated, time_out, info = self.env.step(action_euler)
         
         # 스텝 카운터 증가 및 누적 보상 업데이트
