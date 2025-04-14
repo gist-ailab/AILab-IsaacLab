@@ -5,6 +5,9 @@ import argparse
 from tqdm import tqdm
 import torch
 import shutil
+import tempfile
+import json
+from termcolor import cprint
 from isaaclab.utils.math import quat_box_minus, normalize, wrap_to_pi, euler_xyz_from_quat
 
 
@@ -162,86 +165,195 @@ def hdf5_for_replay(hdf5_path, hdf5_replay_path):
     print(f"Conversion completed. Replayable HDF5 file saved at {hdf5_replay_path}")
 
 
-def delete_failed_episodes(hdf5_path, inspected_file_path):
+def delete_failed_episodes(hdf5_path, inspected_file_path, failed_keys=None):
     """
-    HDF5 파일에서 실패한 에피소드를 삭제합니다.
-    
-    Args:
-        hdf5_path (str): HDF5 파일 경로.
+    HDF5 파일에서 실패한 에피소드를 삭제하고 남은 데모의 인덱스를 재정렬합니다.
+    원본 파일의 압축 특성과 속성(attributes)을 유지합니다.
     """
+
+    if failed_keys is None:
+        cprint(f'Failed indices가 존재하지 않습니다.', color='red')
+        exit()
 
     # 원본 파일을 복사
+    cprint(f'원본 파일을 검사된 파일로 복사 중: {hdf5_path} -> {inspected_file_path}', color='yellow')
     shutil.copy(hdf5_path, inspected_file_path)
+    
+    print(f"삭제할 실패 에피소드 인덱스: {failed_keys}")
 
-    failed_indices = [1, 5, 9, 13, 16, 17]
-
-    with h5py.File(inspected_file_path, 'r+') as hdf5_file:
-        # 삭제할 키 목록 수집
-        keys_to_delete = []
-        
-        for demo_key in hdf5_file['data'].keys():
-            # "demo_숫자" 형식에서 숫자 부분 추출
-            try:
-                demo_idx = int(demo_key.split('_')[1])
-                if demo_idx in failed_indices:
-                    keys_to_delete.append(demo_key)
-            except (IndexError, ValueError):
-                print(f"Warning: Could not parse index from key {demo_key}")
-        
-        # 수집된 키 목록을 기반으로 데이터 삭제
-        for key in keys_to_delete:
+    with h5py.File(inspected_file_path, 'r+') as hdf5_file:        
+        # 데이터 삭제
+        for key in failed_keys:
             del hdf5_file['data'][key]
-            print(f"Deleted failed episode: {key}")
-            
-        # 남은 데모들의 인덱스 재정렬
+            print(f"실패 에피소드 삭제됨: {key}")
+        
+        # 남은 데모 인덱스 재정렬
         remaining_keys = sorted(list(hdf5_file['data'].keys()), 
                               key=lambda x: int(x.split('_')[1]))
         
-        # 임시 데이터 저장을 위한 그룹 생성
-        if 'temp' in hdf5_file:
-            del hdf5_file['temp']
-        hdf5_file.create_group('temp')
+        # 임시 파일 생성
+        with tempfile.NamedTemporaryFile(suffix='.hdf5', delete=False) as temp_file:
+            temp_path = temp_file.name
+            
+        # 임시 파일에 데이터 복사
+        with h5py.File(temp_path, 'w') as temp_hdf5:
+            # 기본 구조 복사 (data 그룹 제외)
+            for key in hdf5_file.keys():
+                if key != 'data':
+                    hdf5_file.copy(key, temp_hdf5)
+            
+            # data 그룹 생성 및 속성 복사
+            data_group = temp_hdf5.create_group('data')
+            
+            # 중요: data 그룹의 속성 복사
+            for attr_name, attr_value in hdf5_file['data'].attrs.items():
+                data_group.attrs[attr_name] = attr_value
+            
+            # 남은 데모 재정렬하여 복사 (원본 압축 속성 유지)
+            for i, old_key in enumerate(remaining_keys):
+                new_key = f'demo_{i}'
+                print(f"인덱스 재정렬: {old_key} -> {new_key}")
+                
+                # 그룹 생성하고 전체 구조 복사
+                source_group = hdf5_file['data'][old_key]
+                target_group = data_group.create_group(new_key)
+                
+                # 그룹 속성 복사
+                for attr_name, attr_value in source_group.attrs.items():
+                    target_group.attrs[attr_name] = attr_value
+                
+                # 데이터셋과 그룹 복사 (원본 속성 유지)
+                for name, item in source_group.items():
+                    if isinstance(item, h5py.Group):
+                        # 하위 그룹 복사
+                        source_group.copy(name, target_group)
+                    else:
+                        # 데이터셋 복사 (원본 압축 유지)
+                        data = item[()]
+                        target_group.create_dataset(name, data=data)
+
+    # 임시 파일을 최종 파일로 이동
+    shutil.move(temp_path, inspected_file_path)
+    
+    # 파일 크기 확인
+    file_size_mb = os.path.getsize(inspected_file_path) / (1024 * 1024)
+    
+    print(f"성공적으로 {len(failed_keys)}개의 실패 에피소드를 삭제하고, 남은 {len(remaining_keys)}개 데모의 인덱스를 재정렬했습니다.")
+    print(f"최종 파일 크기: {file_size_mb:.2f} MB")
+
+
+def combine_episodes(inspected_file_path, supplement_hdf5_path, output_file_path=None):
+    """
+    검사된 HDF5 파일에 추가 교시 데이터를 합친 새 파일을 생성합니다.
+    
+    Args:
+        inspected_file_path: 입력 파일 경로
+        supplement_hdf5_path: 추가 데이터 파일 경로
+        output_file_path: 출력 파일 경로. None이면 input_file_path에 _final 접미사 추가
+    """
+    # 출력 파일 경로가 지정되지 않은 경우 _final 접미사 추가
+    if output_file_path is None:
+        file_name, file_ext = os.path.splitext(inspected_file_path)
+        output_file_path = f"{file_name}_final{file_ext}"
+    
+    # 입력 파일을 출력 파일로 복사하여 시작
+    shutil.copy(inspected_file_path, output_file_path)
+    
+    try:
+        with h5py.File(output_file_path, 'r+') as target_file:
+            # 기존 파일의 마지막 데모 인덱스 찾기
+            existing_keys = list(target_file['data'].keys())
+            if not existing_keys:
+                last_idx = -1
+            else:
+                last_idx = max([int(k.split('_')[1]) for k in existing_keys])
+            
+            print(f"기존 데모 수: {len(existing_keys)}, 마지막 인덱스: {last_idx}")
+            
+            # 추가 데이터 파일 처리
+            with h5py.File(supplement_hdf5_path, 'r') as src_file:
+                demo_count = len(src_file['data'].keys())
+                print(f"추가할 데모 수: {demo_count}")
+                
+                for demo_key in tqdm(src_file['data'].keys(), desc="추가 데모 병합"):
+                    new_idx = last_idx + 1
+                    last_idx += 1
+                    new_key = f'demo_{new_idx}'
+                    
+                    # 그룹 전체를 복사
+                    src_file.copy(f'data/{demo_key}', target_file['data'], name=new_key)
+                    print(f"추가됨: {demo_key} -> {new_key}")
+                
+                print(f"총 {demo_count}개의 데모를 성공적으로 병합했습니다.")
+                print(f"최종 데모 수: {len(target_file['data'].keys())}")
+                
+        # 파일 크기 확인
+        file_size_mb = os.path.getsize(output_file_path) / (1024 * 1024)
+        print(f"최종 파일 크기: {file_size_mb:.2f} MB")
         
-        # 기존 데이터를 임시 그룹으로 복사
-        for i, old_key in enumerate(remaining_keys):
-            hdf5_file.copy(f'data/{old_key}', f'temp/{old_key}')
+        return output_file_path
         
-        # 기존 data 그룹 삭제 후 새로 생성
-        del hdf5_file['data']
-        hdf5_file.create_group('data')
-        
-        # 임시 그룹에서 데이터를 다시 data 그룹으로 복사 (새 인덱스 부여)
-        for i, old_key in enumerate(remaining_keys):
-            new_key = f'demo_{i}'
-            hdf5_file.copy(f'temp/{old_key}', f'data/{new_key}')
-            print(f"Renumbered: {old_key} -> {new_key}")
-        
-        # 임시 그룹 삭제
-        del hdf5_file['temp']
-        
-    print(f"성공적으로 {len(keys_to_delete)}개의 실패 에피소드를 삭제하고, 남은 데모의 인덱스를 재정렬했습니다.")
+    except Exception as e:
+        print(f"데이터 병합 중 오류 발생: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="HDF5 파일을 시뮬레이터 재생용 형식으로 변환합니다.")
     parser.add_argument("--hdf5_path", type=str,
-                        default='/home/bak/Projects/AILab-IsaacLab/datasets/240414_pick_place.hdf5',
+                        default='/home/bak/Projects/AILab-IsaacLab/datasets/240415_pick_place.hdf5',
                         help="입력 HDF5 파일 경로")
     parser.add_argument("--converted_path", type=str,
-                        default='/home/bak/Projects/AILab-IsaacLab/datasets/240414_pick_place_replay.hdf5',
-                        help="출력 재생용 HDF5 파일 경로")
+                        default='/home/bak/Projects/AILab-IsaacLab/datasets/240415_pick_place_replay.hdf5',
+                        # default='/home/bak/Projects/AILab-IsaacLab/datasets/240415_pick_place_replay_inspected.hdf5',
+                        help="출력 재생용 HDF5 파일 경로 (기본값: 입력 파일명에 _replay 추가)")
     parser.add_argument("--inspected_file_path", type=str,
-                        default='/home/bak/Projects/AILab-IsaacLab/datasets/240414_pick_place_inspected.hdf5',
-                        help="검사된 HDF5 파일 경로")
+                        default=None, 
+                        help="검사된 HDF5 파일 경로 (기본값: 재생용 파일명에 _inspected 추가)")
+    parser.add_argument("--supplement_hdf5_path", type=str,
+                        default='/home/bak/Projects/AILab-IsaacLab/datasets/240415_pick_place_supplement.hdf5',
+                        help="추가 교시 정보 HDF5 파일 경로")
+    parser.add_argument("--final_path", type=str,
+                        default=None,
+                        help="최종 결과 파일 경로 (기본값: 검사된 파일명에 _final 추가)")
+    # parser.add_argument("--failed_indices", type=list, default=['demo_6', 'demo_9', 'demo_10'],
+    # parser.add_argument("--failed_indices", type=list, default=['demo_3', 'demo_6', 'demo_7'],
+    #                     help="삭제할 실패 에피소드 인덱스 리스트")
+
+    parser.add_argument("--failed_keys", nargs='+', 
+                        default=['demo_14', 'demo_17', 'demo_18'],
+                        help="삭제할 실패 에피소드 키 리스트 (예: demo_3 demo_6 demo_7)")
 
     args = parser.parse_args()
 
-    # # HDF5 재생용 변환
+    # 기본 파일 경로 설정
+    if args.converted_path is None:
+        file_name, file_ext = os.path.splitext(args.hdf5_path)
+        args.converted_path = f"{file_name}_replay{file_ext}"
+    
+    if args.inspected_file_path is None:
+        file_name, file_ext = os.path.splitext(args.converted_path)
+        args.inspected_file_path = f"{file_name}_inspected{file_ext}"
+        
+    if args.final_path is None:
+        file_name, file_ext = os.path.splitext(args.inspected_file_path)
+        args.final_path = f"{file_name}_final{file_ext}"
+
+    # HDF5 재생용 변환
     # try:
+    #     print(f"원본 파일을 재생용으로 변환 중: {args.hdf5_path} -> {args.converted_path}")
     #     hdf5_for_replay(args.hdf5_path, args.converted_path)
     # except Exception as e:
     #     print(f"변환 중 오류 발생: {e}")
     #     import traceback
     #     traceback.print_exc()
 
-    delete_failed_episodes(args.converted_path, args.inspected_file_path)
+    # print(f"실패한 에피소드 삭제 및 재정렬 중: {args.converted_path} -> {args.inspected_file_path}")
+    # delete_failed_episodes(args.converted_path, args.inspected_file_path, args.failed_keys)
+
+    print(f"추가 데이터 병합 중: {args.inspected_file_path} + {args.supplement_hdf5_path} -> {args.final_path}")
+    combine_episodes(args.inspected_file_path, args.supplement_hdf5_path, args.final_path)
+    
+    print("모든 처리가 완료되었습니다!")
