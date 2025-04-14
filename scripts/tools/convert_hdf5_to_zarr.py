@@ -9,7 +9,7 @@ from termcolor import cprint
 import open3d as o3d  # Import Open3D
 import matplotlib.pyplot as plt # Import matplotlib
 import torch
-from isaaclab.utils.math import quat_mul, quat_inv, normalize, quat_box_minus
+from isaaclab.utils.math import quat_from_angle_axis, normalize, quat_box_minus
 
 def visualize_point_cloud(points):
     """Visualizes a point cloud using Open3D."""
@@ -201,7 +201,7 @@ def sample_rgb_point_cloud(point_cloud, num_points=1024, device='cuda'):
     return result
 
 
-def compute_pose_diff(pose1: torch.Tensor, pose2: torch.Tensor) -> torch.Tensor:
+def compute_pose_diff(pose1: torch.Tensor, pose2: torch.Tensor, scale_factor) -> torch.Tensor:
     """math.py 모듈의 함수들을 사용하여 두 포즈 배치 간의 차이를 계산합니다.
     
     Args:
@@ -220,22 +220,46 @@ def compute_pose_diff(pose1: torch.Tensor, pose2: torch.Tensor) -> torch.Tensor:
     pos1, quat1 = pose1[:, :3], pose1[:, 3:7]
     pos2, quat2 = pose2[:, :3], pose2[:, 3:7]
     
-    # 위치 차이 계산
-    pos_diff = pos2 - pos1
+    # 위치 차이 계산 및 스케일 팩터 적용
+    pos_diff = (pos2 - pos1) * scale_factor
     
-    # 쿼터니언 차이 계산 (q_diff = q2 * q1^-1)
-    quat_diff = quat_mul(quat2, quat_inv(quat1))
+    # 쿼터니언 정규화
+    quat1_norm = normalize(quat1)
+    quat2_norm = normalize(quat2)
     
-    # 쿼터니언이 단위 쿼터니언인지 확인하고 정규화
-    quat_diff = normalize(quat_diff)
+    # quat_box_minus를 사용하여 회전 벡터 계산
+    rot_vec = quat_box_minus(quat2_norm, quat1_norm)
+    
+    # 스케일 팩터 적용
+    rot_vec = rot_vec * scale_factor
+    
+    # 회전 벡터를 스케일된 쿼터니언으로 변환
+    angle = torch.norm(rot_vec, dim=1, keepdim=True)
+
+    # 스케일 팩터 적용 (참고 함수와 동일하게)
+    angle = angle * scale_factor
+    
+    # 초기화 - 기본값으로 단위 쿼터니언 설정
+    batch_size = pose1.shape[0]
+    scaled_quat_diff = torch.zeros((batch_size, 4), device=pose1.device)
+    scaled_quat_diff[:, 0] = 1.0  
+    
+    # 배치에서 각 샘플별로 처리
+    for i in range(batch_size):
+        if angle[i] >= 1e-6:
+            # 회전 축 계산 (이미 정규화된 상태)
+            axis_i = rot_vec[i] / torch.norm(rot_vec[i])
+            
+            # quat_from_angle_axis 함수를 사용하여 쿼터니언 생성
+            scaled_quat_diff[i] = quat_from_angle_axis(angle[i], axis_i)
     
     # 위치 차이와 쿼터니언 차이 결합
-    pose_diff = torch.cat([pos_diff, quat_diff], dim=1)
+    pose_diff = torch.cat([pos_diff, scaled_quat_diff], dim=1)
     
     return pose_diff
 
 
-def hdf5_to_zarr(hdf5_path, zarr_path, chunk_size=100):
+def hdf5_to_zarr(hdf5_path, zarr_path, chunk_size=100, scale_factor=11.0):
     """
     Converts an HDF5 file to a Zarr file.
 
@@ -243,6 +267,7 @@ def hdf5_to_zarr(hdf5_path, zarr_path, chunk_size=100):
         hdf5_path: Path to the HDF5 file.
         zarr_path: Path to the output Zarr file.
         chunk_size: Chunk size for Zarr arrays along the first dimension (time/steps).
+        scale_factor: Scale factor for the end-effector position difference.
     """
 
     print(f"Converting {hdf5_path} to {zarr_path}")
@@ -284,7 +309,7 @@ def hdf5_to_zarr(hdf5_path, zarr_path, chunk_size=100):
         ee_pos_2 = first_obs_policy['agent_pos'][sample_frame][:-2]
         pos_1 = torch.from_numpy(ee_pos_1).to(device='cuda').unsqueeze(0)
         pos_2 = torch.from_numpy(ee_pos_2).to(device='cuda').unsqueeze(0)
-        pos_diff = compute_pose_diff(pos_2, pos_1)  # 두 포즈 간의 차이 계산
+        pos_diff = compute_pose_diff(pos_2, pos_1, scale_factor)  # 두 포즈 간의 차이 계산
         sample_action = torch.cat([pos_diff, torch.tensor([[gripper_condition]], device='cuda')], dim=1).cpu().numpy()[0]
 
         # position_diff = first_obs_policy['agent_pos'][sample_frame][:3] - first_obs_policy['agent_pos'][sample_frame-1][:3]
@@ -371,7 +396,7 @@ def hdf5_to_zarr(hdf5_path, zarr_path, chunk_size=100):
                 # Calculate end-effector position difference
                 ee_pos_diff = torch.zeros_like(ee_pos)      # 첫 번째 행은 0으로 초기화
 
-                ee_pos_diff = compute_pose_diff(ee_pos[1:], ee_pos[:-1])  # 두 번째 행부터 차이 계산 (current - previous)
+                ee_pos_diff = compute_pose_diff(ee_pos[1:], ee_pos[:-1], scale_factor)  # 두 번째 행부터 차이 계산 (current - previous)
                 initial_ee_pos_diff = torch.tensor([0, 0, 0, 1, 0, 0, 0], device='cuda').unsqueeze(0)  # 첫 번째 diff 초기화
                 ee_pos_diff = torch.concat([initial_ee_pos_diff, ee_pos_diff], dim=0)  # 첫 번째 diff를 맨 앞에 추가
 
@@ -559,10 +584,10 @@ def visualize_episode_data(zarr_path, episode_idx=0):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Convert HDF5 file to Zarr format.")
     parser.add_argument("--hdf5_path", type=str,
-                        default='/home/bak/Projects/AILab-IsaacLab/datasets/240413_pick_place.hdf5',
+                        default='/home/bak/Projects/AILab-IsaacLab/datasets/240415_pick_place.hdf5',
                         help="Path to the input HDF5 file.")
     parser.add_argument("--zarr_path", type=str,
-                        default='/home/bak/Projects/AILab-IsaacLab/datasets/240413_pick_place.zarr',
+                        default='/home/bak/Projects/AILab-IsaacLab/datasets/240415_pick_place.zarr',
                         help="Path to the output Zarr file.")
     parser.add_argument("--chunk_size", type=int, default=100,
                         help="Chunk size for Zarr arrays (default: 100).")
