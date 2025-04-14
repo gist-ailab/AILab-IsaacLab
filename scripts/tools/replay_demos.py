@@ -25,7 +25,9 @@ parser.add_argument(
 # parser.add_argument("--dataset_file", type=str, default="datasets/isaac_pick_place.hdf5", help="Dataset file to be replayed.")
 # parser.add_argument("--dataset_file", type=str, default="datasets/test3_replay.hdf5", help="Dataset file to be replayed.")
 # parser.add_argument("--dataset_file", type=str, default="datasets/test3.hdf5", help="Dataset file to be replayed.")
-parser.add_argument("--dataset_file", type=str, default="datasets/240413_pick_place.hdf5", help="Dataset file to be replayed.")
+# parser.add_argument("--dataset_file", type=str, default="datasets/240415_pick_place_replay.hdf5", help="Dataset file to be replayed.")
+parser.add_argument("--dataset_file", type=str, default="datasets/240415_pick_place_replay_inspected.hdf5", help="Dataset file to be replayed.")
+# parser.add_argument("--dataset_file", type=str, default="datasets/240415_pick_place_replay_inspected_inspected.hdf5", help="Dataset file to be replayed.")
 parser.add_argument(
     "--validate_states",
     action="store_true",
@@ -163,6 +165,8 @@ def main():
 
     # simulate environment -- run everything in inference mode
     episode_names = list(dataset_file_handler.get_episode_names())
+    # 숫자 순서로 정렬 (demo_0, demo_1, demo_2, ... 순서로)
+    episode_names = sorted(episode_names, key=lambda x: int(x.split('_')[1]))
     replayed_episode_count = 0
     with contextlib.suppress(KeyboardInterrupt) and torch.inference_mode():
         while simulation_app.is_running() and not simulation_app.is_exiting():
@@ -209,9 +213,9 @@ def main():
                         env.sim.render()
                         continue
 
-                if 'replay' in args_cli.dataset_file:
-                    actions[0][:3] = actions[0][:3] * 11  # actions가 두 frame 사이의 pose 변화량일 때 사용
-                    actions[0][3:6] = actions[0][3:6] * 11 # actions가 두 frame 사이의 pose 변화량일 때 사용
+                # if 'replay' in args_cli.dataset_file:
+                #     actions[0][:3] = actions[0][:3] * 11  # actions가 두 frame 사이의 pose 변화량일 때 사용
+                #     actions[0][3:6] = actions[0][3:6] * 11 # actions가 두 frame 사이의 pose 변화량일 때 사용
                 env.step(actions)
 
                 if state_validation_enabled:
